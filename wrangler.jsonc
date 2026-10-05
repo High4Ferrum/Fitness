@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "form-fitness",
+  "main": ".worker-build/worker.js",
+  "no_bundle": true,
+  "build": { "command": "node scripts/build-worker.mjs" },
+  "compatibility_date": "2026-10-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "durable_objects": { "bindings": [{ "name": "FORM_DB", "class_name": "FormDatabase" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FormDatabase"] }],
+  "vars": { "FORM_SEED_DEMO": "0", "FORM_COOKIE_SECURE": "1" },
+  "observability": { "enabled": true },
+  "env": {
+    "preview": {
+      "name": "form-fitness-preview",
+      "durable_objects": { "bindings": [{ "name": "FORM_DB", "class_name": "FormDatabase" }] },
+      "vars": { "FORM_SEED_DEMO": "1", "FORM_COOKIE_SECURE": "1" }
+    }
+  }
+}

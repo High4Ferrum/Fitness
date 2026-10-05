@@ -1,0 +1,14 @@
+{
+  "name": "FORM fitness app",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "24" }
+  },
+  "forwardPorts": [5173, 3001],
+  "portsAttributes": {
+    "5173": { "label": "FORM app", "onAutoForward": "openBrowser" },
+    "3001": { "label": "FORM API", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "npm ci --no-audit --no-fund && npm run build",
+  "postAttachCommand": "bash .devcontainer/start.sh"
+}

@@ -1,0 +1,42 @@
+{
+  "name": "form-fitness",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"node --watch server/index.mjs\" \"vite --configLoader native --host 127.0.0.1\"",
+    "build": "tsc -b && vite build --configLoader native && node scripts/build-worker.mjs",
+    "start": "node server/index.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "npm run build && playwright test",
+    "dev:cloudflare": "npm run build && node scripts/dev-cloudflare.mjs",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:preview": "npm run build && wrangler deploy --env preview",
+    "deploy:preview:direct": "npm run build && node scripts/deploy-direct.mjs",
+    "test:cloudflare": "node scripts/build-worker.mjs && node --test tests/cloudflare-api.mjs",
+    "test:e2e:cloudflare": "npm run build && playwright test --config playwright.cloudflare.config.mjs"
+  },
+  "dependencies": {
+    "@fontsource/dm-sans": "^5.3.0",
+    "express": "^5.1.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@sparticuz/chromium": "^153.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "miniflare": "^5.20261001.0-alpha",
+    "rollup": "^4.64.0",
+    "typescript": "~5.7.3",
+    "vite": "^6.1.0",
+    "wrangler": "^4.147.0"
+  }
+}
