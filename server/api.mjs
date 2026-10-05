@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { seedDatabase, seedExerciseLibrary, passwordHash } from './seed.mjs';
 
-const tables = ['clients', 'exercises', 'plans', 'workout_templates', 'training_sessions', 'logs', 'measurements', 'assessments'];
+const tables = ['clients', 'exercises', 'plans', 'workout_templates', 'weekly_lineups', 'weekly_assignments', 'training_sessions', 'logs', 'measurements', 'assessments'];
 const SESSION_DAYS = 7;
 const fail = (status, message) => { const error = new Error(message); error.status = status; throw error; };
 const own = (object, key) => Object.hasOwn(object, key);
@@ -264,7 +264,8 @@ export function createApi({ app, db, seed = true, config = {} }) {
     const filtered = table => all(table).filter(entity => clientIds.has(entity.clientId));
     const invitations = req.user.role === 'client' ? [] : db.prepare('SELECT id,name,email,goal,coach_id,expires_at,used_at,revoked_at FROM client_invitations').all().filter(invite => req.user.role === 'admin' || invite.coach_id === req.user.id).map(invite => ({ id: invite.id, name: invite.name, email: invite.email, coachId: invite.coach_id, expiresAt: invite.expires_at, status: invite.used_at ? 'Joined' : invite.revoked_at ? 'Revoked' : invite.expires_at <= Date.now() ? 'Expired' : 'Pending' }));
     const templates = req.user.role === 'client' ? [] : all('workout_templates').filter(template => req.user.role === 'admin' || template.ownerId === req.user.id);
-    res.json({ demoMode: seed, user: req.user, users, invitations, templates, exercises: all('exercises'), clients, plans: filtered('plans'), sessions: filtered('training_sessions'), logs: filtered('logs'), measurements: filtered('measurements'), assessments: filtered('assessments') });
+    const weeklyLineups = req.user.role === 'client' ? [] : all('weekly_lineups').filter(lineup => req.user.role === 'admin' || lineup.ownerId === req.user.id);
+    res.json({ demoMode: seed, user: req.user, users, invitations, templates, weeklyLineups, weeklyAssignments: filtered('weekly_assignments'), exercises: all('exercises'), clients, plans: filtered('plans'), sessions: filtered('training_sessions'), logs: filtered('logs'), measurements: filtered('measurements'), assessments: filtered('assessments') });
   });
 
   app.post('/api/invitations', (req, res) => {
@@ -406,7 +407,8 @@ export function createApi({ app, db, seed = true, config = {} }) {
     trainer(req); checkKeys(req.body, planKeys);
     const current = requiredEntity('plans', req.params.id); clientFor(req, current.clientId);
     if (all('logs').some(log => log.planId === current.id)) fail(409, 'Completed workouts are kept as historical records and cannot be edited.');
-    res.json(save('plans', validatePlan(req, { ...current, ...req.body }, current.id)));
+    if (current.weeklyAssignmentId && own(req.body, 'clientId') && req.body.clientId !== current.clientId) fail(409, 'Copy this workout to another client instead of moving it out of the weekly assignment.');
+    res.json(save('plans', { ...validatePlan(req, { ...current, ...req.body }, current.id), ...(current.weeklyAssignmentId ? { weeklyAssignmentId: current.weeklyAssignmentId } : {}) }));
   });
   app.delete('/api/plans/:id', (req, res) => {
     trainer(req); const current = requiredEntity('plans', req.params.id); clientFor(req, current.clientId);
@@ -431,6 +433,7 @@ export function createApi({ app, db, seed = true, config = {} }) {
   });
   app.delete('/api/templates/:id', (req, res) => {
     templateFor(req, req.params.id);
+    if (all('weekly_lineups').some(lineup => lineup.days.some(day => day.templateId === req.params.id))) fail(409, 'This daily routine is used in a weekly lineup. Replace it in that lineup before removing it.');
     db.prepare('DELETE FROM workout_templates WHERE id=?').run(req.params.id); res.json({ ok: true });
   });
   const copyPlan = (req, source) => {
@@ -449,6 +452,59 @@ export function createApi({ app, db, seed = true, config = {} }) {
     trainer(req); checkKeys(req.body, ['name']);
     const current = requiredEntity('plans', req.params.id); clientFor(req, current.clientId);
     res.status(201).json(save('workout_templates', validateTemplate({ ...current, name: req.body.name ?? current.name }, `template-${randomUUID()}`, req.user.id)));
+  });
+
+  const weeklyFor = (req, id) => {
+    trainer(req);
+    const lineup = requiredEntity('weekly_lineups', id);
+    if (req.user.role !== 'admin' && lineup.ownerId !== req.user.id) fail(403, 'You do not have access to this weekly lineup.');
+    return lineup;
+  };
+  const weeklyDays = (req, value, ownerId) => {
+    if (!Array.isArray(value) || value.length < 3 || value.length > 5) fail(400, 'A weekly lineup needs 3–5 training days.');
+    const owner = db.prepare('SELECT role FROM users WHERE id=?').get(ownerId);
+    const days = value.map(day => {
+      if (!day || typeof day !== 'object' || Array.isArray(day)) fail(400, 'Each training day must be an object.');
+      checkKeys(day, ['weekday', 'templateId']);
+      const weekday = num(day.weekday, 'Weekday (Monday = 0)', 0, 6, true);
+      const template = templateFor(req, str(day.templateId, 'Daily routine', 100, true));
+      if (owner?.role === 'coach' && template.ownerId !== ownerId) fail(400, 'Choose daily routines from this lineup’s coach.');
+      return { weekday, templateId: template.id };
+    }).sort((a, b) => a.weekday - b.weekday);
+    if (new Set(days.map(day => day.weekday)).size !== days.length) fail(400, 'Choose only one daily routine for each weekday.');
+    return days;
+  };
+  const validateWeekly = (req, body, id, ownerId) => ({ id, ownerId, name: str(body.name, 'Weekly lineup name', 120, true), notes: str(body.notes ?? '', 'Weekly lineup notes', 5000), days: weeklyDays(req, body.days, ownerId) });
+  app.post('/api/weekly-lineups', (req, res) => {
+    trainer(req); checkKeys(req.body, ['name', 'notes', 'days']);
+    res.status(201).json(save('weekly_lineups', validateWeekly(req, req.body, `weekly-${randomUUID()}`, req.user.id)));
+  });
+  app.patch('/api/weekly-lineups/:id', (req, res) => {
+    const current = weeklyFor(req, req.params.id); checkKeys(req.body, ['name', 'notes', 'days']);
+    res.json(save('weekly_lineups', validateWeekly(req, { ...current, ...req.body }, current.id, current.ownerId)));
+  });
+  app.delete('/api/weekly-lineups/:id', (req, res) => {
+    weeklyFor(req, req.params.id);
+    db.prepare('DELETE FROM weekly_lineups WHERE id=?').run(req.params.id); res.json({ ok: true });
+  });
+  app.post('/api/weekly-lineups/:id/assign', (req, res) => {
+    const lineup = weeklyFor(req, req.params.id); checkKeys(req.body, ['clientId', 'startDate', 'weeks', 'days']);
+    clientFor(req, req.body.clientId);
+    const startDate = dateValue(req.body.startDate), start = new Date(`${startDate}T00:00:00Z`);
+    if (start.getUTCDay() !== 1) fail(400, 'Choose a Monday for the first week.');
+    const weeks = num(req.body.weeks, 'Number of weeks', 2, 4, true);
+    const days = own(req.body, 'days') ? weeklyDays(req, req.body.days, req.user.id) : weeklyDays(req, lineup.days, lineup.ownerId);
+    const routines = days.map(day => ({ ...day, routine: templateFor(req, day.templateId) }));
+    const assignment = { id: `assignment-${randomUUID()}`, clientId: req.body.clientId, lineupId: lineup.id, lineupName: lineup.name, notes: lineup.notes, startDate, weeks, days: routines.map(day => ({ weekday: day.weekday, name: day.routine.name })), createdAt: new Date().toISOString() };
+    const plans = Array.from({ length: weeks }, (_, week) => routines.map(day => {
+      const date = new Date(start); date.setUTCDate(date.getUTCDate() + week * 7 + day.weekday);
+      return { ...validatePlan(req, { ...day.routine, clientId: assignment.clientId, date: date.toISOString().slice(0, 10) }, `plan-${randomUUID()}`), weeklyAssignmentId: assignment.id };
+    })).flat();
+    const dates = new Set(plans.map(plan => plan.date));
+    const collisions = all('plans').filter(plan => plan.clientId === assignment.clientId && dates.has(plan.date));
+    if (collisions.length) fail(409, `This client already has workouts on ${[...new Set(collisions.map(plan => plan.date))].sort().join(', ')}. Choose different weeks or adjust the training days. Existing workouts are kept.`);
+    db.transaction(() => { save('weekly_assignments', assignment); for (const plan of plans) save('plans', plan); });
+    res.status(201).json({ assignment, planCount: plans.length });
   });
 
   const sessionKeys = ['clientId', 'date', 'time', 'duration', 'type', 'location', 'notes'];

@@ -4,6 +4,7 @@ import { api } from '../api';
 import type { Client, Data, Exercise, Plan, PlanItem, WorkoutLog, WorkoutTemplate } from '../types';
 import Modal from './Modal';
 import CopyWorkout from './CopyWorkout';
+import WeeklyLineups, { addWorkoutDays, workoutDateLabel } from './WeeklyLineups';
 import './Workouts.css';
 
 interface Props { data: Data; refresh: () => Promise<void>; notify: (message: string) => void; }
@@ -26,7 +27,7 @@ export default function Workouts({ data, refresh, notify }: Props) {
   const [clientFilter, setClientFilter] = useState('all');
   const [dayFilter, setDayFilter] = useState<string | null>(null);
   const [builder, setBuilder] = useState<{ plan?: Plan; date: string } | null>(null);
-  const [section, setSection] = useState<'week' | 'library'>('week');
+  const [section, setSection] = useState<'week' | 'library' | 'lineups'>('week');
   const [copying, setCopying] = useState<Plan | WorkoutTemplate | null>(null);
   const [logging, setLogging] = useState<Plan | null>(null);
   const [viewing, setViewing] = useState<Plan | null>(null);
@@ -37,6 +38,7 @@ export default function Workouts({ data, refresh, notify }: Props) {
   const weekPlans = data.plans.filter(plan => plan.date >= week && plan.date <= dates[6] && (isClient ? plan.clientId === ownClient?.id : clientFilter === 'all' || plan.clientId === clientFilter));
   const displayed = weekPlans.filter(plan => !dayFilter || plan.date === dayFilter).sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
   const completedCount = weekPlans.filter(plan => data.logs.some(log => log.planId === plan.id)).length;
+  const assignedLineups = data.weeklyAssignments.filter(assignment => assignment.startDate <= dates[6] && addWorkoutDays(assignment.startDate, assignment.weeks * 7 - 1) >= week && (isClient ? assignment.clientId === ownClient?.id : clientFilter === 'all' || assignment.clientId === clientFilter));
   const exerciseById = (id: string) => data.exercises.find(exercise => exercise.id === id);
   const moveWeek = (amount: number) => { setWeek(addDays(week, amount)); setDayFilter(null); };
   async function saved(message: string) { await refresh(); notify(message); }
@@ -50,11 +52,11 @@ export default function Workouts({ data, refresh, notify }: Props) {
 
   return <div className="workouts-page">
     <div className="page-heading">
-      <div><p className="eyebrow">A LITTLE STRONGER, EVERY WEEK</p><h1>{isClient ? 'Your workouts' : 'Weekly workouts'}</h1><p className="workouts-subtitle">{isClient ? 'Your plan is here. Show up, make progress, and make it yours.' : 'Thoughtful plans. Consistent progress. One week at a time.'}</p></div>
+      <div><p className="eyebrow">A LITTLE STRONGER, EVERY WEEK</p><h1>{isClient ? 'Your workouts' : 'Workout planning'}</h1><p className="workouts-subtitle">{isClient ? 'Your plan is here. Show up, make progress, and make it yours.' : 'Build daily routines. Arrange your week. Make it personal.'}</p></div>
       {!isClient && <button className="button primary" onClick={() => setBuilder({ date: dayFilter || week })}><Plus size={18} /> Build a workout</button>}
     </div>
-    {!isClient && <div className="workout-section-tabs" aria-label="Workout views"><button className={section === 'week' ? 'active' : ''} aria-pressed={section === 'week'} onClick={() => setSection('week')}><Clock3 size={16} />Weekly workouts</button><button className={section === 'library' ? 'active' : ''} aria-pressed={section === 'library'} onClick={() => setSection('library')}><BookOpen size={16} />Workout library <span>{data.templates.length}</span></button></div>}
-    {section === 'library' && !isClient ? <TemplateLibrary data={data} refresh={refresh} notify={notify} onCopy={setCopying} /> : <>
+    {!isClient && <><p className="workout-hierarchy">1 Exercise library <ArrowRight size={13} /> 2 Daily routines <ArrowRight size={13} /> 3 Weekly lineups</p><div className="workout-section-tabs" aria-label="Workout views"><button className={section === 'week' ? 'active' : ''} aria-pressed={section === 'week'} onClick={() => setSection('week')}><Clock3 size={16} />Client calendar</button><button className={section === 'library' ? 'active' : ''} aria-pressed={section === 'library'} onClick={() => setSection('library')}><BookOpen size={16} />Daily routines <span>{data.templates.length}</span></button><button className={section === 'lineups' ? 'active' : ''} aria-pressed={section === 'lineups'} onClick={() => setSection('lineups')}><Dumbbell size={16} />Weekly lineups <span>{data.weeklyLineups.length}</span></button></div></>}
+    {section === 'library' && !isClient ? <TemplateLibrary data={data} refresh={refresh} notify={notify} onCopy={setCopying} /> : section === 'lineups' && !isClient ? <WeeklyLineups data={data} refresh={refresh} notify={notify} onDailyRoutines={() => setSection('library')} onAssigned={(clientId, date) => { setClientFilter(clientId); setWeek(date); setDayFilter(null); setSection('week'); }} /> : <>
     <div className="workouts-controls">
       <div className="week-navigation">
         <button className="workouts-icon-button" aria-label="Previous week" onClick={() => moveWeek(-7)}><ArrowLeft size={18} /></button>
@@ -64,6 +66,11 @@ export default function Workouts({ data, refresh, notify }: Props) {
       </div>
       {!isClient && <label className="workouts-client-filter"><span>Client</span><select aria-label="Filter workouts by client" value={clientFilter} onChange={event => setClientFilter(event.target.value)}><option value="all">All clients</option>{data.clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select><ChevronDown size={15} /></label>}
     </div>
+    {assignedLineups.length > 0 && <div className="assigned-lineups">{assignedLineups.map(assignment => {
+      const plans = data.plans.filter(plan => plan.weeklyAssignmentId === assignment.id);
+      const done = plans.filter(plan => data.logs.some(log => log.planId === plan.id)).length;
+      return <div className="assigned-lineup panel" key={assignment.id}><div><strong>{assignment.lineupName}</strong><span>{!isClient && `${data.clients.find(client => client.id === assignment.clientId)?.name || 'Client'} · `}{assignment.days.length} days / week · {assignment.weeks} weeks</span><span>{workoutDateLabel(assignment.startDate)} – {workoutDateLabel(addWorkoutDays(assignment.startDate, assignment.weeks * 7 - 1))}</span></div><span>{done} / {plans.length} workouts completed</span></div>;
+    })}</div>}
     <div className="workout-week-strip" aria-label="Days of the week">
       {dates.map((date, index) => {
         const plans = weekPlans.filter(plan => plan.date === date);
@@ -82,6 +89,7 @@ export default function Workouts({ data, refresh, notify }: Props) {
         return <article className={`workout-card panel ${log ? 'is-complete' : ''}`} key={plan.id}>
           <div className="workout-card-top"><span className="workout-card-date">{readDate(plan.date).toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()} <span>·</span> {shortDate(plan.date)}</span><span className={`badge ${log ? 'workout-completed-badge' : 'workout-planned-badge'}`}>{log ? <CheckCircle2 size={13} /> : <Clock3 size={13} />}{log ? 'Completed' : 'Planned'}</span></div>
           <h3>{plan.name}</h3>
+          {plan.weeklyAssignmentId && <p className="workout-lineup-label">{data.weeklyAssignments.find(assignment => assignment.id === plan.weeklyAssignmentId)?.lineupName || 'Weekly lineup'}</p>}
           {!isClient && <div className="workout-client"><span className="workout-client-avatar" style={{ background: client?.color || '#d7e4e0' }}>{client?.name.split(' ').map(part => part[0]).slice(0, 2).join('') || '?'}</span><span>{client?.name || 'Client'}</span></div>}
           <div className="workout-card-exercises">{plan.items.slice(0, 3).map((item, index) => <div key={`${item.exerciseId}-${index}`} className="workout-preview-row"><span className="workout-exercise-icon"><Dumbbell size={16} /></span><div><strong>{exerciseById(item.exerciseId)?.name || 'Exercise'}</strong><span>{item.sets} × {item.reps} reps{item.weight > 0 ? ` · ${item.weight} lb` : ' · Bodyweight'}</span></div></div>)}{plan.items.length > 3 && <span className="workout-more-exercises">+ {plan.items.length - 3} more {plan.items.length - 3 === 1 ? 'exercise' : 'exercises'}</span>}</div>
           {equipmentFlags.length > 0 && <div className="workout-equipment-note"><TriangleAlert size={14} /><span>{equipmentFlags.length} {equipmentFlags.length === 1 ? 'exercise needs' : 'exercises need'} equipment to review</span></div>}
@@ -91,7 +99,7 @@ export default function Workouts({ data, refresh, notify }: Props) {
       })}
     </div>}
     </>}
-    {builder && <PlanBuilder data={data} existing={builder.plan} initialDate={builder.date} initialClientId={section === 'library' ? '' : clientFilter !== 'all' ? clientFilter : data.clients[0]?.id || ''} onClose={() => setBuilder(null)} onSaved={async library => { await saved(library ? 'Workout saved to your library.' : builder.plan ? 'Workout updated.' : 'Workout added to the week.'); if (library) setSection('library'); setBuilder(null); }} />}
+    {builder && <PlanBuilder data={data} existing={builder.plan} initialDate={builder.date} initialClientId={section !== 'week' ? '' : clientFilter !== 'all' ? clientFilter : data.clients[0]?.id || ''} onClose={() => setBuilder(null)} onSaved={async library => { await saved(library ? 'Daily routine saved to your library.' : builder.plan ? 'Workout updated.' : 'Workout added to the week.'); if (library) setSection('library'); setBuilder(null); }} />}
     {copying && <CopyWorkout data={data} source={copying} initialDate={localDate(new Date())} onClose={() => setCopying(null)} onSaved={async date => { await saved('Workout copied to the client.'); setCopying(null); setWeek(startOfWeek(readDate(date))); setDayFilter(null); setClientFilter('all'); setSection('week'); }} />}
     {logging && ownClient && <LogWorkout data={data} plan={logging} clientId={ownClient.id} onClose={() => setLogging(null)} onSaved={async () => { await saved('Workout complete. Every session counts!'); setLogging(null); }} />}
     {viewing && <WorkoutDetails data={data} plan={viewing} log={data.logs.find(log => log.planId === viewing.id)} onClose={() => setViewing(null)} onLog={isClient && !data.logs.some(log => log.planId === viewing.id) ? () => { setLogging(viewing); setViewing(null); } : undefined} />}
@@ -113,6 +121,7 @@ function SaveToLibrary({ plan, onSaved, notify }: { plan: Plan; onSaved: () => P
 function TemplateLibrary({ data, refresh, notify, onCopy }: Props & { onCopy: (template: WorkoutTemplate) => void }) {
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<WorkoutTemplate | null>(null);
+  const [duplicating, setDuplicating] = useState<WorkoutTemplate | null>(null);
   const [deleting, setDeleting] = useState<WorkoutTemplate | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -125,27 +134,28 @@ function TemplateLibrary({ data, refresh, notify, onCopy }: Props & { onCopy: (t
     finally { setBusy(false); }
   }
   return <section className="workout-template-library">
-    <div className="workouts-list-heading"><div><h2>Your reusable workouts</h2><span>Build once. Copy to any of your clients, on any date.</span></div></div>
-    <label className="workout-library-search"><Search size={17} /><input aria-label="Search workout library" placeholder="Search your workouts" value={search} onChange={event => setSearch(event.target.value)} /></label>
+    <div className="workouts-list-heading"><div><h2>Your daily routines</h2><span>Build Chest day, Legs, or a combined split. Reuse them in weekly lineups or copy to a client.</span></div></div>
+    <label className="workout-library-search"><Search size={17} /><input aria-label="Search daily routines" placeholder="Search your workouts" value={search} onChange={event => setSearch(event.target.value)} /></label>
     {!data.clients.length && <p className="workout-coaching-note">You can build and save workouts now. Add or invite a client to start assigning copies.</p>}
     {templates.length ? <div className="workout-cards">{templates.map(template => <article className="workout-card panel" key={template.id}>
       <div className="workout-card-top"><span className="badge sage"><BookOpen size={13} />Reusable workout</span>{data.user.role === 'admin' && <span className="workout-template-owner">{data.users.find(user => user.id === template.ownerId)?.name || 'Coach'}</span>}</div>
       <h3>{template.name}</h3>
       <div className="workout-card-exercises">{template.items.map((item, index) => <div className="workout-preview-row" key={index}><span className="workout-exercise-icon"><Dumbbell size={16} /></span><div><strong>{data.exercises.find(exercise => exercise.id === item.exerciseId)?.name || 'Exercise'}</strong><span>{item.sets} × {item.reps} reps · {item.weight ? `${item.weight} lb` : 'Bodyweight'} · {item.rest}s rest</span>{item.notes && <small>{item.notes}</small>}</div></div>)}</div>
       {template.notes && <p className="workout-coaching-note">{template.notes}</p>}
-      <div className="workout-reuse-actions"><button className="button primary" onClick={() => onCopy(template)}><Copy size={15} />Copy to client</button><button className="button secondary" onClick={() => setEditing(template)}><Pencil size={14} />Edit workout</button><button className="workouts-icon-button" aria-label={`Remove ${template.name}`} onClick={() => { setDeleting(template); setError(''); }}><Trash2 size={16} /></button></div>
-    </article>)}</div> : <div className="empty-state workouts-empty"><BookOpen size={28} /><h3>{search ? 'No matching workouts' : 'Start your workout library'}</h3><p>{search ? 'Try a different search.' : 'Use Build a workout and choose Workout library to save a reusable plan. No client or date is needed.'}</p></div>}
+      <div className="workout-reuse-actions"><button className="button primary" onClick={() => onCopy(template)}><Copy size={15} />Copy to client</button><button className="button secondary" onClick={() => setEditing(template)}><Pencil size={14} />Edit workout</button><button className="button ghost" onClick={() => setDuplicating(template)}><Copy size={14} />Duplicate routine</button><button className="workouts-icon-button" aria-label={`Remove ${template.name}`} onClick={() => { setDeleting(template); setError(''); }}><Trash2 size={16} /></button></div>
+    </article>)}</div> : <div className="empty-state workouts-empty"><BookOpen size={28} /><h3>{search ? 'No matching workouts' : 'Start your daily routine library'}</h3><p>{search ? 'Try a different search.' : 'Use Build a workout and choose Daily routine library to save a reusable plan. No client or date is needed.'}</p></div>}
     {editing && <PlanBuilder data={data} template={editing} initialDate={localDate(new Date())} initialClientId="" onClose={() => setEditing(null)} onSaved={async () => { await refresh(); setEditing(null); notify('Library workout updated. Existing client copies are kept.'); }} />}
+    {duplicating && <PlanBuilder data={data} startingRoutine={duplicating} initialDate={localDate(new Date())} initialClientId="" onClose={() => setDuplicating(null)} onSaved={async () => { await refresh(); setDuplicating(null); notify('Routine copy saved.'); }} />}
     {deleting && <Modal title="Remove library workout?" onClose={() => !busy && setDeleting(null)}><p className="workouts-modal-description">Remove “{deleting.name}” from your library? Workouts already copied to clients remain in their plans.</p>{error && <p className="workouts-form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="button secondary" disabled={busy} onClick={() => setDeleting(null)}>Keep workout</button><button className="button workouts-danger" disabled={busy} onClick={remove}>{busy ? 'Removing…' : 'Remove workout'}</button></div></Modal>}
   </section>;
 }
 
-function PlanBuilder({ data, existing, template, initialDate, initialClientId, onClose, onSaved }: { data: Data; existing?: Plan; template?: WorkoutTemplate; initialDate: string; initialClientId: string; onClose: () => void; onSaved: (library: boolean) => Promise<void> }) {
+function PlanBuilder({ data, existing, template, startingRoutine, initialDate, initialClientId, onClose, onSaved }: { data: Data; existing?: Plan; template?: WorkoutTemplate; startingRoutine?: WorkoutTemplate; initialDate: string; initialClientId: string; onClose: () => void; onSaved: (library: boolean) => Promise<void> }) {
   const [clientId, setClientId] = useState(existing?.clientId || initialClientId);
-  const [name, setName] = useState(existing?.name || template?.name || '');
+  const [name, setName] = useState(existing?.name || template?.name || (startingRoutine ? `${startingRoutine.name} copy` : ''));
   const [date, setDate] = useState(existing?.date || initialDate);
-  const [notes, setNotes] = useState(existing?.notes || template?.notes || '');
-  const [items, setItems] = useState<PlanItem[]>((existing || template)?.items.map(item => ({ ...item })) || []);
+  const [notes, setNotes] = useState(existing?.notes || template?.notes || startingRoutine?.notes || '');
+  const [items, setItems] = useState<PlanItem[]>((existing || template || startingRoutine)?.items.map(item => ({ ...item })) || []);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -168,8 +178,8 @@ function PlanBuilder({ data, existing, template, initialDate, initialClientId, o
   return <Modal title={existing || template ? 'Edit workout' : 'Build a workout'} onClose={() => { if (!busy) onClose(); }}><form onSubmit={submit} className="workout-builder">
     <p className="workouts-modal-description">Choose your movements, set the intention, and make it personal.</p>
     <fieldset disabled={busy} className="workout-form-fieldset">
-      {!template && <div className="form-grid"><label className="field">Client<select value={clientId} onChange={event => setClientId(event.target.value)}>{!existing && <option value="">Workout library · assign later</option>}{data.clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>{clientId && <label className="field">Workout date<input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label>}</div>}
-      {!clientId && <p className="workout-coaching-note">This reusable workout stays in your workout library. Copy it to a client when you’re ready.</p>}
+      {!template && <div className="form-grid"><label className="field">Client<select disabled={!!existing?.weeklyAssignmentId} value={clientId} onChange={event => setClientId(event.target.value)}>{!existing && <option value="">Daily routine library · assign later</option>}{data.clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>{clientId && <label className="field">Workout date<input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label>}</div>}
+      {!clientId && <p className="workout-coaching-note">This daily routine stays in your library. Add it to weekly lineups or copy it to a client when you’re ready.</p>}
       <label className="field">Workout name<input required maxLength={100} value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Upper body · strength foundations" /></label>
       <div className="workout-builder-section-title"><h3>Exercises</h3><span>{items.length} added</span></div>
       {items.length === 0 && <div className="workout-builder-placeholder"><Dumbbell size={22} /><p>Your workout starts with one movement.<br />Choose an exercise from the library below.</p></div>}

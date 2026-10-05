@@ -28,9 +28,21 @@ Links expire after seven days and work once. Pending invitations can be revoked.
 
 ## Reusable workouts and assessments
 
-Admins and coaches can build workouts before adding clients. Open **Workout plans → Build a workout**, choose **Workout library · assign later**, add exercises and save. These reusable workouts need no client or date. Coaches manage their own library; administrators can manage all libraries.
+Admins and coaches can build before adding clients. Open **Workout plans → Daily routines → Build a workout**, choose **Daily routine library · assign later**, add exercises and save. These reusable routines need no client or date. Coaches manage their own library; administrators can manage all libraries.
 
-Open **Workout library → Copy to client**, choose the client and date, then copy. Sets, repetitions, loads, rest, exercise notes and workout notes are copied into an independent plan. Editing or removing the library workout leaves existing client plans intact. Assigned and completed workouts also have **Copy to client** and **Save to library** controls; copies include the prescription, without completed results. Archived exercises must be replaced before making a new assignment.
+Open **Daily routines → Copy to client**, choose the client and date, then copy. Sets, repetitions, loads, rest, exercise notes and workout notes are copied into an independent plan. **Duplicate routine** starts a variation with the same exercises and prescriptions. Assigned and completed workouts also have **Copy to client** and **Save to library** controls; copies include the prescription, without completed results. Archived exercises must be replaced before making a new assignment.
+
+## Three levels of workout planning
+
+1. **Exercise library:** individual movements, instructions, equipment and alternatives.
+2. **Daily routines:** named combinations such as Chest day, Leg day, Back day, or Chest & arms. Set each exercise's sets, repetitions, weight, rest and notes. Build or duplicate routines without a client.
+3. **Weekly lineups:** open **Workout plans → Weekly lineups → Build a weekly lineup**. Choose a daily routine for 3–5 weekdays and leave the remaining days as rest days. Save, edit or duplicate the lineup for different training splits.
+
+To assign a lineup, choose **Assign to client**, select the client and a starting Monday, then choose **2, 3 or 4 weeks**. Review the exact dates before saving. You can swap daily routines and training days for this client without changing the saved lineup, provided the week still has 3–5 training days. For example, a four-day lineup repeated for four weeks creates 16 dated workouts.
+
+**Client calendar** opens the first assigned week and shows the program dates and total completion count. Clients see their own program and dated workouts under **My workouts**; week arrows move through all assigned weeks. Each dated workout is an independent copy that can be adjusted for that client. Changes to saved daily routines or weekly lineups apply to future assignments and leave existing client workouts intact. Existing workouts on selected training dates cause an overlap message; the assignment saves no partial workouts. Choose different weeks or adjust the training days to proceed.
+
+A daily routine used in a saved weekly lineup cannot be deleted until it is replaced in that lineup or the lineup is removed. Removing a weekly lineup keeps all previously assigned client workouts and program records. To extend a program, assign the same lineup again starting on the Monday after its final week.
 
 **Schedule session** requires a client assigned to the coach (or any client for an administrator). Add or invite that client from **My clients** first. The empty schedule explains this requirement.
 

@@ -23,12 +23,12 @@ test('live library workouts copy independently and body fat assessments persist'
   await dialog.getByLabel('Workout date').fill(date);
   await dialog.getByRole('button', { name: 'Copy workout', exact: true }).click();
   await expect(dialog).toBeHidden();
-  await page.getByRole('button', { name: /^Workout library/ }).click();
+  await page.getByRole('button', { name: /^Daily routines/ }).click();
   await template.getByRole('button', { name: 'Edit workout', exact: true }).click();
   await page.getByRole('dialog').getByLabel('Bodyweight squat Sets', { exact: true }).fill('5');
   await page.getByRole('dialog').getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
-  await page.getByRole('button', { name: 'Weekly workouts', exact: true }).click();
+  await page.getByRole('button', { name: 'Client calendar', exact: true }).click();
   const copy = page.locator('article').filter({ has: page.getByRole('heading', { name, exact: true }) });
   await expect(copy.getByText('3 × 10 reps · Bodyweight', { exact: true })).toBeVisible();
   await page.getByRole('navigation').getByRole('button', { name: 'Progress & assessments', exact: true }).click();

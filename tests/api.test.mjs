@@ -563,3 +563,116 @@ test('body fat assessments store percent history with bounds and client access',
   assert.deepEqual((await f.bootstrap(client.cookie)).assessments.find(record => record.id === assessment.id), { id: assessment.id, ...payload });
   const maya = await f.login('maya@form.fit'); assert.equal((await f.bootstrap(maya.cookie)).assessments.some(record => record.id === assessment.id), false);
 });
+
+async function weeklyFixture(t) {
+  const f = await fixture(t), coach = await f.login('coach@form.fit');
+  const { items, notes } = planPayload();
+  const routines = [];
+  for (const name of ['Chest & arms', 'Leg day', 'Back & shoulders']) routines.push(status(await f.request('/templates', { method: 'POST', cookie: coach.cookie, body: { name, items, notes } }), 201));
+  const days = routines.map((routine, index) => ({ weekday: index * 2, templateId: routine.id }));
+  const lineup = status(await f.request('/weekly-lineups', { method: 'POST', cookie: coach.cookie, body: { name: 'Three-day foundations', notes: 'Repeat with consistent technique', days } }), 201);
+  return { ...f, coach, routines, days, lineup };
+}
+const shiftWorkoutDate = (date, days) => { const value = new Date(`${date}T00:00:00Z`); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10); };
+
+test('weekly lineups assign 2–4 exact weeks across daylight saving and year boundaries', async t => {
+  const f = await weeklyFixture(t);
+  for (const [startDate, weeks, weekdays] of [['2030-03-04', 2, [0, 2, 4]], ['2030-10-28', 3, [0, 1, 3, 5]], ['2030-12-23', 4, [0, 1, 2, 3, 4]]]) {
+    const days = weekdays.map((weekday, index) => ({ weekday, templateId: f.routines[index % 3].id }));
+    const { assignment, planCount } = status(await f.request(`/weekly-lineups/${f.lineup.id}/assign`, { method: 'POST', cookie: f.coach.cookie, body: { clientId: 'client-jamie', startDate, weeks, days } }), 201);
+    assert.equal(planCount, weekdays.length * weeks); assert.equal(assignment.weeks, weeks);
+    const plans = (await f.bootstrap(f.coach.cookie)).plans.filter(plan => plan.weeklyAssignmentId === assignment.id).sort((a, b) => a.date.localeCompare(b.date));
+    assert.deepEqual(plans.map(plan => plan.date), Array.from({ length: weeks }, (_, week) => weekdays.map(weekday => shiftWorkoutDate(startDate, week * 7 + weekday))).flat());
+    for (let index = 0; index < plans.length; index++) {
+      const routine = f.routines[index % weekdays.length % 3];
+      assert.equal(plans[index].name, routine.name); assert.deepEqual(plans[index].items, routine.items); assert.equal(plans[index].notes, routine.notes);
+    }
+    assert.equal(new Set(plans.map(plan => plan.id)).size, planCount);
+  }
+  assert.deepEqual((await f.bootstrap(f.coach.cookie)).weeklyLineups[0].days, f.days, 'Client variations must not change the reusable lineup');
+  const client = await f.login('jamie@form.fit'), maya = await f.login('maya@form.fit');
+  assert.deepEqual((await f.bootstrap(client.cookie)).weeklyLineups, []);
+  assert.equal((await f.bootstrap(client.cookie)).weeklyAssignments.length, 3);
+  assert.equal((await f.bootstrap(maya.cookie)).weeklyAssignments.length, 0);
+  await f.restart(); assert.equal((await f.bootstrap(client.cookie)).weeklyAssignments.length, 3);
+});
+
+test('assigned weekly workouts are independent snapshots and preserve their program membership', async t => {
+  const f = await weeklyFixture(t);
+  const result = status(await f.request(`/weekly-lineups/${f.lineup.id}/assign`, { method: 'POST', cookie: f.coach.cookie, body: { clientId: 'client-jamie', startDate: '2030-01-07', weeks: 2 } }), 201);
+  const plans = (await f.bootstrap(f.coach.cookie)).plans.filter(plan => plan.weeklyAssignmentId === result.assignment.id);
+  status(await f.request(`/templates/${f.routines[0].id}`, { method: 'PATCH', cookie: f.coach.cookie, body: { name: 'Changed future chest routine', items: [{ ...f.routines[0].items[0], sets: 5 }] } }), 200);
+  status(await f.request(`/weekly-lineups/${f.lineup.id}`, { method: 'PATCH', cookie: f.coach.cookie, body: { name: 'Future weekly title', days: f.days.map(day => ({ ...day, templateId: f.routines[1].id })) } }), 200);
+  assert.deepEqual((await f.bootstrap(f.coach.cookie)).plans.filter(plan => plan.weeklyAssignmentId === result.assignment.id), plans);
+  const edited = status(await f.request(`/plans/${plans[0].id}`, { method: 'PATCH', cookie: f.coach.cookie, body: { items: [{ ...plans[0].items[0], weight: 85 }] } }), 200);
+  assert.equal(edited.weeklyAssignmentId, result.assignment.id);
+  status(await f.request(`/plans/${plans[0].id}`, { method: 'PATCH', cookie: f.coach.cookie, body: { clientId: 'client-maya' } }), 409);
+  const copy = status(await f.request(`/plans/${plans[0].id}/copy`, { method: 'POST', cookie: f.coach.cookie, body: { clientId: 'client-maya', date: '2030-01-07' } }), 201);
+  assert.equal('weeklyAssignmentId' in copy, false); assert.equal(copy.items[0].weight, 85);
+  status(await f.request(`/weekly-lineups/${f.lineup.id}`, { method: 'DELETE', cookie: f.coach.cookie }), 200);
+  for (const routine of f.routines) status(await f.request(`/templates/${routine.id}`, { method: 'DELETE', cookie: f.coach.cookie }), 200);
+  await f.restart(); const data = await f.bootstrap(f.coach.cookie);
+  assert.deepEqual(data.weeklyLineups, []); assert.deepEqual(data.templates, []);
+  assert.deepEqual(data.weeklyAssignments[0], result.assignment); assert.equal(data.plans.find(plan => plan.id === edited.id).items[0].weight, 85);
+  assert.equal(data.plans.filter(plan => plan.weeklyAssignmentId === result.assignment.id).length, 6);
+});
+
+test('weekly assignment rejects collisions and invalid exercises before writing any workouts', async t => {
+  const f = await weeklyFixture(t), path = `/weekly-lineups/${f.lineup.id}/assign`;
+  const payload = { clientId: 'client-jamie', startDate: '2030-05-06', weeks: 4 };
+  status(await f.request('/plans', { method: 'POST', cookie: f.coach.cookie, body: { ...planPayload(), date: '2030-05-31' } }), 201);
+  const before = await f.bootstrap(f.coach.cookie);
+  const conflict = status(await f.request(path, { method: 'POST', cookie: f.coach.cookie, body: payload }), 409);
+  assert.match(conflict.error, /2030-05-31/);
+  const after = await f.bootstrap(f.coach.cookie); assert.deepEqual(after.plans, before.plans); assert.deepEqual(after.weeklyAssignments, []);
+  const success = status(await f.request(path, { method: 'POST', cookie: f.coach.cookie, body: { ...payload, startDate: '2030-06-03' } }), 201);
+  status(await f.request(path, { method: 'POST', cookie: f.coach.cookie, body: { ...payload, startDate: '2030-06-03' } }), 409);
+  assert.equal((await f.bootstrap(f.coach.cookie)).weeklyAssignments.length, 1);
+  const admin = await f.login('admin@form.fit');
+  status(await f.request('/exercises/ex-bench', { method: 'DELETE', cookie: admin.cookie }), 200);
+  const archivedBefore = await f.bootstrap(f.coach.cookie);
+  status(await f.request(path, { method: 'POST', cookie: f.coach.cookie, body: { ...payload, startDate: '2030-07-01' } }), 400);
+  const archivedAfter = await f.bootstrap(f.coach.cookie); assert.deepEqual(archivedAfter.plans, archivedBefore.plans); assert.equal(archivedAfter.weeklyAssignments.length, 1);
+  assert.equal(success.planCount, 12);
+});
+
+test('weekly lineup validation protects daily references and requires 3–5 distinct training days', async t => {
+  const f = await weeklyFixture(t), payload = { name: 'Validation lineup', days: f.days };
+  const invalid = [
+    { days: f.days.slice(0, 2) }, { days: Array.from({ length: 6 }, (_, weekday) => ({ weekday, templateId: f.routines[0].id })) },
+    { days: [{ ...f.days[0] }, { ...f.days[0] }, f.days[1]] }, { days: [{ ...f.days[0], weekday: 7 }, ...f.days.slice(1)] },
+    { days: [{ ...f.days[0], weekday: 0.5 }, ...f.days.slice(1)] }, { days: [{ ...f.days[0], weekday: '0' }, ...f.days.slice(1)] },
+    { days: [{ ...f.days[0], extra: 'untrusted' }, ...f.days.slice(1)] }, { ownerId: 'user-admin' }, { name: '' },
+  ];
+  for (const changes of invalid) status(await f.request('/weekly-lineups', { method: 'POST', cookie: f.coach.cookie, body: { ...payload, ...changes } }), 400);
+  status(await f.request('/weekly-lineups', { method: 'POST', cookie: f.coach.cookie, body: { ...payload, days: [{ ...f.days[0], templateId: 'missing-template' }, ...f.days.slice(1)] } }), 404);
+  const assign = { clientId: 'client-jamie', startDate: '2030-04-01', weeks: 2 };
+  for (const changes of [{ weeks: 1 }, { weeks: 5 }, { weeks: 2.5 }, { weeks: '2' }, { startDate: '2030-04-02' }, { startDate: '2030-02-30' }, { days: [] }, { weeklyAssignmentId: 'forged' }]) status(await f.request(`/weekly-lineups/${f.lineup.id}/assign`, { method: 'POST', cookie: f.coach.cookie, body: { ...assign, ...changes } }), 400);
+  assert.equal((await f.bootstrap(f.coach.cookie)).weeklyLineups.length, 1);
+  assert.deepEqual((await f.bootstrap(f.coach.cookie)).weeklyAssignments, []);
+  status(await f.request(`/templates/${f.routines[0].id}`, { method: 'DELETE', cookie: f.coach.cookie }), 409);
+  status(await f.request(`/weekly-lineups/${f.lineup.id}`, { method: 'PATCH', cookie: f.coach.cookie, body: { ownerId: 'user-admin' } }), 400);
+});
+
+test('weekly lineups enforce coach ownership and client permissions at every endpoint', async t => {
+  const f = await weeklyFixture(t), admin = await f.login('admin@form.fit'), client = await f.login('jamie@form.fit');
+  status(await f.request('/users', { method: 'POST', cookie: admin.cookie, body: { name: 'Other Weekly Coach', email: 'other-weekly@example.com', password: 'OtherWeekly123!', role: 'coach' } }), 201);
+  const other = await f.login('other-weekly@example.com', 'OtherWeekly123!');
+  for (const account of [client, other]) {
+    assert.deepEqual((await f.bootstrap(account.cookie)).weeklyLineups, []);
+    for (const [path, method, body] of [
+      [`/weekly-lineups/${f.lineup.id}`, 'PATCH', { name: 'Stolen lineup' }], [`/weekly-lineups/${f.lineup.id}`, 'DELETE', undefined],
+      [`/weekly-lineups/${f.lineup.id}/assign`, 'POST', { clientId: 'client-jamie', startDate: '2030-08-05', weeks: 2 }],
+      ['/weekly-lineups', 'POST', { name: 'Cross-owner lineup', days: f.days }],
+    ]) status(await f.request(path, { method, cookie: account.cookie, body }), 403);
+  }
+  const foreignClient = status(await f.request('/clients', { method: 'POST', cookie: other.cookie, body: { name: 'Foreign Weekly Client', email: 'foreign-weekly@example.com', password: 'ClientPassword123!' } }), 201);
+  status(await f.request(`/weekly-lineups/${f.lineup.id}/assign`, { method: 'POST', cookie: f.coach.cookie, body: { clientId: foreignClient.id, startDate: '2030-08-05', weeks: 2 } }), 403);
+  const { items } = planPayload();
+  const adminRoutine = status(await f.request('/templates', { method: 'POST', cookie: admin.cookie, body: { name: 'Admin day', items } }), 201);
+  status(await f.request(`/weekly-lineups/${f.lineup.id}`, { method: 'PATCH', cookie: admin.cookie, body: { days: f.days.map(day => ({ ...day, templateId: adminRoutine.id })) } }), 400);
+  const assigned = status(await f.request(`/weekly-lineups/${f.lineup.id}/assign`, { method: 'POST', cookie: admin.cookie, body: { clientId: foreignClient.id, startDate: '2030-08-05', weeks: 2 } }), 201);
+  assert.equal((await f.bootstrap(other.cookie)).weeklyAssignments[0].id, assigned.assignment.id);
+  assert.equal((await f.bootstrap(f.coach.cookie)).weeklyAssignments.length, 0);
+  assert.equal((await f.bootstrap(admin.cookie)).weeklyLineups.length, 1);
+});
