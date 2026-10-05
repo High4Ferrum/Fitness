@@ -1,6 +1,6 @@
 export type Role = 'admin' | 'coach' | 'client';
 export interface User { id: string; name: string; email: string; role: Role; clientId?: string; }
-export interface Exercise { id: string; name: string; category: string; muscles: string; equipment: string[]; difficulty: string; instructions: string; cues: string; videoUrl: string; alternatives: string[]; archived: boolean; }
+export interface Exercise { id: string; name: string; category: string; muscles: string; equipment: string[]; difficulty: string; instructions: string; cues: string; videoUrl: string; alternatives: string[]; archived: boolean; references?: { name: string; url: string }[]; }
 export interface Client { id: string; userId: string; coachId: string; name: string; email: string; goal: string; equipment: string[]; color: string; joinedAt: string; }
 export interface PlanItem { exerciseId: string; sets: number; reps: number; weight: number; rest: number; notes: string; }
 export interface Plan { id: string; clientId: string; name: string; date: string; items: PlanItem[]; notes: string; weeklyAssignmentId?: string; }

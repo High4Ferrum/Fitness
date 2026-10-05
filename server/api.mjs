@@ -64,6 +64,8 @@ export function createApi({ app, db, seed = true, config = {} }) {
     const name = str(config.FORM_ADMIN_NAME || 'Administrator', 'Admin name', 120, true);
     db.prepare('INSERT INTO users(id,name,email,role,client_id,password_hash) VALUES (?,?,?,?,?,?)').run(`user-${randomUUID()}`, name, email, 'admin', null, passwordHash(password));
   }
+  // Add new catalog entries on upgrades without replacing saved edits or archived records.
+  db.transaction(() => seedExerciseLibrary(db));
   const all = table => db.prepare(`SELECT json FROM ${table}`).all().map(row => JSON.parse(row.json));
   const get = (table, id) => {
     if (typeof id !== 'string') return undefined;
@@ -292,7 +294,7 @@ export function createApi({ app, db, seed = true, config = {} }) {
     res.json({ ok: true });
   });
 
-  const exerciseKeys = ['name', 'category', 'muscles', 'equipment', 'difficulty', 'instructions', 'cues', 'videoUrl', 'alternatives', 'archived'];
+  const exerciseKeys = ['name', 'category', 'muscles', 'equipment', 'difficulty', 'instructions', 'cues', 'videoUrl', 'alternatives', 'archived', 'references'];
   const validateExercise = (body, id) => {
     const videoUrl = str(body.videoUrl ?? '', 'Video URL', 2000);
     if (videoUrl) {
@@ -308,7 +310,17 @@ export function createApi({ app, db, seed = true, config = {} }) {
     const difficulty = str(body.difficulty ?? 'Beginner', 'Difficulty', 50, true);
     if (!['Beginner', 'Intermediate', 'Advanced'].includes(difficulty)) fail(400, 'Choose Beginner, Intermediate, or Advanced difficulty.');
     if (own(body, 'archived') && typeof body.archived !== 'boolean') fail(400, 'Archived must be true or false.');
-    return { id, name: str(body.name, 'Exercise name', 120, true), category: str(body.category, 'Category', 80, true), muscles: str(body.muscles ?? '', 'Muscles', 200), equipment: stringList(body.equipment ?? [], 'Equipment'), difficulty, instructions: str(body.instructions ?? '', 'Instructions', 5000), cues: str(body.cues ?? '', 'Coaching cues', 2000), videoUrl, alternatives, archived: body.archived ?? false };
+    if (own(body, 'references') && (!Array.isArray(body.references) || body.references.length > 10)) fail(400, 'References must be a list of at most 10 sources.');
+    const references = (body.references || []).map(reference => {
+      if (!reference || typeof reference !== 'object' || Array.isArray(reference)) fail(400, 'Each reference needs a name and HTTPS URL.');
+      checkKeys(reference, ['name', 'url']);
+      const name = str(reference.name, 'Reference name', 160, true), url = str(reference.url, 'Reference URL', 2000, true);
+      let parsed;
+      try { parsed = new URL(url); } catch { fail(400, 'Reference links must use HTTPS.'); }
+      if (parsed.protocol !== 'https:' || parsed.username || parsed.password) fail(400, 'Reference links must use HTTPS.');
+      return { name, url };
+    });
+    return { id, name: str(body.name, 'Exercise name', 120, true), category: str(body.category, 'Category', 80, true), muscles: str(body.muscles ?? '', 'Muscles', 200), equipment: stringList(body.equipment ?? [], 'Equipment'), difficulty, instructions: str(body.instructions ?? '', 'Instructions', 5000), cues: str(body.cues ?? '', 'Coaching cues', 2000), videoUrl, alternatives, archived: body.archived ?? false, ...(references.length ? { references } : {}) };
   };
   const persistExercise = exercise => {
     save('exercises', exercise);

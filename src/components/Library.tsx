@@ -149,6 +149,7 @@ export default function Library({ data, refresh, notify }: Props) {
       <div className="exercise-detail-section"><h4>How to perform</h4><p className="preserve-lines">{selected.instructions}</p></div>
       {selected.cues && <div className="exercise-coaching-cues"><span className="eyebrow">COACHING CUES</span><p className="preserve-lines">{selected.cues}</p></div>}
       {selected.alternatives.length > 0 && <div className="exercise-detail-section"><h4>Alternative movements</h4><div className="exercise-equipment-tags">{selected.alternatives.map(id => <span className="tag" key={id}>{alternativeLabel(id)}</span>)}</div></div>}
+      {data.user.role !== 'client' && !!selected.references?.length && <div className="exercise-detail-section"><h4>Coach references</h4><div className="library-source-links">{selected.references.map(reference => <a key={reference.url} href={reference.url} target="_blank" rel="noreferrer">{reference.name} <ArrowUpRight size={14} /></a>)}</div></div>}
       {selected.videoUrl ? <a className="button secondary library-video-link" href={selected.videoUrl} target="_blank" rel="noreferrer"><Video size={17} /> {selected.videoUrl.includes('/results?') ? 'Find a video on YouTube' : 'Watch on YouTube'} <ArrowUpRight size={16} /></a> : <p className="muted">A demonstration hasn’t been added yet.</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
       {isAdmin && <div className="modal-actions library-detail-actions">

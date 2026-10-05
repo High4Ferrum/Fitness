@@ -11,6 +11,33 @@ async function navigate(page,name){
 }
 const today=()=>new Date().toISOString().slice(0,10);
 
+test('coach finds new exercises, opens references, and saves them in a daily routine', async ({ page }) => {
+ await demo(page, 'coach');
+ await navigate(page, 'Exercise library');
+ await page.getByRole('textbox', { name: 'Search exercises', exact: true }).fill('face pull');
+ await page.getByRole('combobox', { name: 'Filter by equipment', exact: true }).selectOption('Cable machine');
+ await page.getByRole('button', { name: 'Open Cable face pull details', exact: true }).click();
+ await expect(page.getByRole('dialog').getByRole('link', { name: 'NASM exercise library' })).toHaveAttribute('href', 'https://www.nasm.org/resource-center/exercise-library');
+ await page.getByRole('dialog').getByRole('button', { name: 'Close dialog', exact: true }).click();
+ await navigate(page, 'Workout plans');
+ await page.getByRole('button', { name: /^Daily routines/ }).click();
+ await page.locator('.page-heading').getByRole('button', { name: 'Build a workout', exact: true }).click();
+ const dialog = page.getByRole('dialog'), name = `ISSA and NASM routine ${Date.now()}`;
+ await dialog.getByLabel('Workout name').fill(name);
+ for (const exercise of ['Incline dumbbell bench press', 'Cable face pull', 'Bird dog']) {
+  await dialog.getByRole('textbox', { name: 'Search exercises to add', exact: true }).fill(exercise);
+  await dialog.getByRole('button', { name: new RegExp(exercise) }).click();
+ }
+ await dialog.getByRole('button', { name: 'Save workout', exact: true }).click();
+ await expect(dialog).toBeHidden();
+ await page.reload();
+ await navigate(page, 'Workout plans');
+ await page.getByRole('button', { name: /^Daily routines/ }).click();
+ await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+ const saved = await (await page.request.get('/api/bootstrap')).json();
+ expect(saved.templates.find(item => item.name === name).items.map(item => item.exerciseId)).toEqual(['ex-incline-db-press', 'ex-face-pull', 'ex-bird-dog']);
+});
+
 test('mobile users can see Sign out and switch all demo roles', async ({ page }) => {
  await page.setViewportSize({ width: 390, height: 844 });
  for (const role of ['admin', 'client', 'coach']) {

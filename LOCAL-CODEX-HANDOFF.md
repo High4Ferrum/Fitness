@@ -34,11 +34,17 @@ POST/PATCH/DELETE /api/weekly-lineups follow the same staff ownership rules as d
 
 weekly_assignments stores clientId, lineupId, lineupName, notes, startDate, weeks, day/name snapshots and createdAt. Assigned plans contain weeklyAssignmentId. Bootstrap filters assignments through client access; clients receive their own assignments and no weekly templates. Plan edits preserve program membership and cannot move that plan to another client; Copy to client makes an unlinked copy. Editing or deleting daily/weekly source templates leaves assigned prescriptions and assignment history intact. Client calendar shows the program date range, frequency, duration and total completion count. Assignment dialogs show every week/date and support per-client swaps without modifying the saved lineup.
 
+## Expanded exercise catalog
+
+The shared starter library has 48 exercises: 19 original, 20 verified ISSA selections, and 9 distinct additions from NASM/ACE (chin-up, Bulgarian split squat, seated leg curl, leg press calf raise, cable face pull, dumbbell front raise, bird dog, side plank, resistance band Pallof press). Definitions and primary source links are in server/exercise-additions.mjs; instructions and cues are original app text. No course media is copied. Staff see Coach references in exercise details; clients use the app instructions and existing YouTube demonstration search.
+
+createApi runs additive catalog seeding at startup for both new and existing databases. Match by stable ID or normalized name, retain all existing JSON including edits and archives, resolve alternatives to custom matching entries, and filter missing/archived alternatives for new entries. No database migration or data reset is needed. Exercise references survive edits and must use HTTPS links without embedded credentials.
+
 ## Verification
 
 - TypeScript/Vite/Rollup build.
-- 29 API contracts on Express, and the same 29 on workerd, including weekly repetition, snapshots, atomic overlap rejection, validation, and ownership.
-- Seven demo browser workflows, including mobile daily/weekly building, duplication, 2/4-week assignment, client variations and client calendar visibility.
+- 30 API contracts on Express, and the same 30 on workerd, including weekly repetition, snapshots, atomic overlap rejection, validation, ownership, and expanded catalog use and persistence. A separate catalog upgrade regression checks an existing 19-exercise database with custom edits and archived movements.
+- Eight demo browser workflows, including expanded-library search/references and daily building, mobile daily/weekly building, duplication, 2/4-week assignment, client variations and client calendar visibility.
 - Full isolated production browser flow: owner setup → admin and coach building with zero clients → weekly lineup saving without clients → client registration → template copying → independent editing → workout completion → sign-out → saved login → completed workout copying → body fat recording and client visibility.
 - Deployed demo smoke tests include registration and training workflows.
 - Real deployed configuration and protected record access checked without consuming the owner’s activation link.

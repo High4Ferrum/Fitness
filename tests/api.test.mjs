@@ -475,13 +475,39 @@ test('a private workspace can be activated only once with its setup secret and h
   assert.equal(data.users.length, 1);
   assert.equal(data.clients.length, 0);
   assert.equal(data.plans.length, 0);
-  assert.equal(data.exercises.length, 19);
+  assert.equal(data.exercises.length, 48);
   assert.equal(status(await f.request('/config'), 200).setupRequired, false);
   status(await f.request(`/auth/setup/${token}`), 409);
   status(await f.request('/auth/setup', { method: 'POST', body: { ...payload, email: 'imposter@example.com' } }), 409);
   status(await f.request('/auth/login', { method: 'POST', body: { email: 'admin@form.fit', password: demoPassword } }), 401);
   await f.restart();
   assert.equal((await f.bootstrap(cookie)).user.email, payload.email);
+});
+
+test('expanded exercises retain references, work in daily routines, and preserve edits and archives after restart', async t => {
+  const f = await fixture(t), admin = await f.login('admin@form.fit');
+  const initial = await f.bootstrap(admin.cookie);
+  const bird = initial.exercises.find(exercise => exercise.id === 'ex-bird-dog');
+  assert.match(bird.references[0].url, /^https:\/\/www\.nasm\.org\//);
+  assert.ok(initial.exercises.find(exercise => exercise.id === 'ex-incline-db-press').references.some(source => source.name.startsWith('ISSA')));
+  const edited = status(await f.request('/exercises/ex-bird-dog', { method: 'PATCH', cookie: admin.cookie, body: { cues: 'My own coaching cue' } }), 200);
+  assert.deepEqual(edited.references, bird.references);
+  for (const references of [[{ name: 'Unsafe', url: 'javascript:alert(1)' }], [{ name: 'Unsafe', url: 'https://user:pass@example.com/' }], [{ name: 'Unknown', url: 'https://example.com/', extra: true }], null]) {
+    status(await f.request('/exercises/ex-bird-dog', { method: 'PATCH', cookie: admin.cookie, body: { references } }), 400);
+  }
+  status(await f.request('/exercises/ex-seated-leg-curl', { method: 'DELETE', cookie: admin.cookie }), 200);
+  const coach = await f.login('coach@form.fit');
+  const template = status(await f.request('/templates', { method: 'POST', cookie: coach.cookie, body: { name: 'Expanded library routine', notes: '', items: [
+    { exerciseId: 'ex-incline-db-press', sets: 3, reps: 8, weight: 15, rest: 60, notes: '' },
+    { exerciseId: 'ex-bird-dog', sets: 2, reps: 10, weight: 0, rest: 45, notes: 'Per side' },
+  ] } }), 201);
+  await f.restart();
+  const saved = await f.bootstrap(coach.cookie);
+  assert.equal(saved.exercises.length, initial.exercises.length);
+  assert.equal(saved.exercises.find(exercise => exercise.id === 'ex-bird-dog').cues, 'My own coaching cue');
+  assert.equal(saved.exercises.find(exercise => exercise.id === 'ex-seated-leg-curl').archived, true);
+  assert.ok(saved.exercises.every(exercise => !exercise.alternatives.includes('ex-seated-leg-curl')));
+  assert.deepEqual(saved.templates.find(item => item.id === template.id).items, template.items);
 });
 
 test('admins and coaches build without clients; templates assign independent copies and survive restart', async t => {

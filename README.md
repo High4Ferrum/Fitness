@@ -10,7 +10,7 @@ Choose Admin, Coach, or Client on the sign-in screen to explore the sample works
 
 ## Start your coaching workspace
 
-Use the private activation guide provided with the deployment to create your own administrator account. Choose your name, email and password. The link works only until the first account is created. The real workspace starts with 19 library exercises and no demo accounts, clients, workouts or measurements. The demo uses a separate database.
+Use the private activation guide provided with the deployment to create your own administrator account. Choose your name, email and password. The link works only until the first account is created. The real workspace starts with 48 library exercises and no demo accounts, clients, workouts or measurements. The demo uses a separate database.
 
 You can coach clients directly as the administrator, or add coach accounts under **Manage coaches**.
 
@@ -33,6 +33,10 @@ Admins and coaches can build before adding clients. Open **Workout plans → Dai
 Open **Daily routines → Copy to client**, choose the client and date, then copy. Sets, repetitions, loads, rest, exercise notes and workout notes are copied into an independent plan. **Duplicate routine** starts a variation with the same exercises and prescriptions. Assigned and completed workouts also have **Copy to client** and **Save to library** controls; copies include the prescription, without completed results. Archived exercises must be replaced before making a new assignment.
 
 ## Three levels of workout planning
+
+The exercise catalog includes 19 original movements plus 20 ISSA selections and 9 additional selections from the earlier NASM/ACE research, with overlaps included once. New entries include equipment, target muscles, difficulty, original instructions, coaching cues, alternatives and coach reference links. ISSA reference links open the trainer portal and may require sign-in. Third-party videos, photos and course text are not copied into the app; the YouTube control searches for demonstrations. Administrators can replace that search link with a selected video.
+
+Catalog upgrades add missing exercises to existing workspaces when the API starts. Existing edits, archived exercises, custom movements and assigned workouts remain intact. A custom exercise with the same name (ignoring case, extra spaces and hyphens) is reused instead of adding a duplicate.
 
 1. **Exercise library:** individual movements, instructions, equipment and alternatives.
 2. **Daily routines:** named combinations such as Chest day, Leg day, Back day, or Chest & arms. Set each exercise's sets, repetitions, weight, rest and notes. Build or duplicate routines without a client.
@@ -126,9 +130,9 @@ npm run test:e2e:cloudflare
 npm run test:e2e:registration
 ```
 
-The 24 API contracts run against both Express and the real Cloudflare runtime: authentication, role and ownership restrictions, exercise management, coaching, scheduling, progress, password changes, request validation, and persistence after a restart. Each test uses isolated storage.
+The 30 API contracts run against both Express and the real Cloudflare runtime: authentication, role and ownership restrictions, exercise management, coaching, scheduling, progress, password changes, request validation, and persistence after a restart. A separate upgrade test verifies catalog additions in an existing 19-exercise database with custom entries and archives. Each test uses isolated storage.
 
-The six demo browser workflows cover admin library/account management, coach assignment and client completion, equipment/measurements, assessments/password changes, and mobile layouts. Windows/macOS use an installed Chrome browser; Linux uses the bundled Chromium package. Browser tests use UTC to keep date-only test inputs consistent at timezone boundaries. The Cloudflare browser suite uses a separate temporary database. The private-registration browser suite covers first-owner activation, an invited client choosing their password, workout assignment and completion, mobile sign-out, and signing back in to saved data.
+The eight demo browser workflows cover admin library/account management, expanded-library search and routine building, weekly programs, coach assignment and client completion, equipment/measurements, assessments/password changes, and mobile layouts. Windows/macOS use an installed Chrome browser; Linux uses the bundled Chromium package. Browser tests use UTC to keep date-only test inputs consistent at timezone boundaries. The Cloudflare browser suite uses a separate temporary database. The private-registration browser suite covers first-owner activation, an invited client choosing their password, workout assignment and completion, mobile sign-out, and signing back in to saved data.
 
 To verify an already deployed demo preview, set `FORM_E2E_BASE_URL` and run `npx playwright test --config playwright.preview.config.mjs`. This checks sign-in for all three roles, admin exercise editing, coach workout assignment, client completion, and persistence after reload. A second live check covers coach invitations, client self-registration, visible sign-out, saved login and rejected reuse of a consumed invitation. It creates uniquely named sample records and preserves the demo passwords.
 

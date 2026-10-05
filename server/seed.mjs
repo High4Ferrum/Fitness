@@ -1,4 +1,5 @@
 import { randomBytes, scryptSync } from 'node:crypto';
+import { exerciseAdditions } from './exercise-additions.mjs';
 
 export function passwordHash(password) {
   const salt = randomBytes(16).toString('hex');
@@ -93,9 +94,20 @@ export function seedExerciseLibrary(db) {
     ['walk', 'Brisk walk', 'Cardio', 'Legs · Cardiovascular', [], 'Beginner', 'Walk at a comfortable brisk pace on a safe, even route.', 'Use a pace that matches the coach’s prescribed effort.', ['bike']],
     ['hip-flexor', 'Half-kneeling hip flexor stretch', 'Mobility', 'Hip flexors', [], 'Beginner', 'Kneel with one foot forward. Gently tuck your pelvis and shift forward until you feel a comfortable stretch.', 'Avoid forcing the stretch or arching your back.', []],
   ];
+  const existing = db.prepare('SELECT json FROM exercises').all().map(row => JSON.parse(row.json));
+  const byId = new Map(existing.map(exercise => [exercise.id, exercise]));
+  const normalize = name => name.trim().toLowerCase().replace(/[\s-]+/g, ' ');
+  const byName = new Map(existing.map(exercise => [normalize(exercise.name), exercise]));
+  const canonicalIds = new Map(), pending = [];
+  for (const [key, name, category, muscles, equipment, difficulty, instructions, cues, alternatives, references] of [...definitions, ...exerciseAdditions]) {
+    const id = `ex-${key}`, current = byId.get(id) || byName.get(normalize(name));
+    if (current) { canonicalIds.set(id, current.id); continue; }
+    const exercise = { id, name, category, muscles, equipment, difficulty, instructions, cues, videoUrl: video(name), alternatives: alternatives.map(a => `ex-${a}`), archived: false, ...(references ? { references } : {}) };
+    pending.push(exercise); byId.set(id, exercise); byName.set(normalize(name), exercise); canonicalIds.set(id, id);
+  }
   const insert = db.prepare('INSERT OR IGNORE INTO exercises(id,json) VALUES (?,?)');
-  for (const [key, name, category, muscles, equipment, difficulty, instructions, cues, alternatives] of definitions) {
-    const exercise = { id: `ex-${key}`, name, category, muscles, equipment, difficulty, instructions, cues, videoUrl: video(name), alternatives: alternatives.map(a => `ex-${a}`), archived: false };
+  for (const exercise of pending) {
+    exercise.alternatives = [...new Set(exercise.alternatives.map(id => canonicalIds.get(id) || id))].filter(id => id !== exercise.id && byId.has(id) && !byId.get(id).archived);
     insert.run(exercise.id, JSON.stringify(exercise));
   }
 }
