@@ -47,6 +47,7 @@ export default function Schedule({ data, refresh, notify }: Props) {
       {canManage && <button className="button primary" disabled={!data.clients.length} onClick={() => setEditor({ date: selectedDate })}><Plus size={17} /> Schedule session</button>}
     </div>
 
+    {canManage && !data.clients.length && <p className="schedule-time-note">Sessions need a client. Add or invite a client from My clients, then schedule their session here.</p>}
     <div className="schedule-layout">
       <div className="schedule-main">
         <section className="panel schedule-calendar" aria-label="Weekly training calendar">

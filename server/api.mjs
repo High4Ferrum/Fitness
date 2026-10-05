@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { seedDatabase, seedExerciseLibrary, passwordHash } from './seed.mjs';
 
-const tables = ['clients', 'exercises', 'plans', 'training_sessions', 'logs', 'measurements', 'assessments'];
+const tables = ['clients', 'exercises', 'plans', 'workout_templates', 'training_sessions', 'logs', 'measurements', 'assessments'];
 const SESSION_DAYS = 7;
 const fail = (status, message) => { const error = new Error(message); error.status = status; throw error; };
 const own = (object, key) => Object.hasOwn(object, key);
@@ -263,7 +263,8 @@ export function createApi({ app, db, seed = true, config = {} }) {
     const users = db.prepare('SELECT * FROM users').all().filter(user => req.user.role === 'admin' || userIds.has(user.id)).map(cleanUser);
     const filtered = table => all(table).filter(entity => clientIds.has(entity.clientId));
     const invitations = req.user.role === 'client' ? [] : db.prepare('SELECT id,name,email,goal,coach_id,expires_at,used_at,revoked_at FROM client_invitations').all().filter(invite => req.user.role === 'admin' || invite.coach_id === req.user.id).map(invite => ({ id: invite.id, name: invite.name, email: invite.email, coachId: invite.coach_id, expiresAt: invite.expires_at, status: invite.used_at ? 'Joined' : invite.revoked_at ? 'Revoked' : invite.expires_at <= Date.now() ? 'Expired' : 'Pending' }));
-    res.json({ demoMode: seed, user: req.user, users, invitations, exercises: all('exercises'), clients, plans: filtered('plans'), sessions: filtered('training_sessions'), logs: filtered('logs'), measurements: filtered('measurements'), assessments: filtered('assessments') });
+    const templates = req.user.role === 'client' ? [] : all('workout_templates').filter(template => req.user.role === 'admin' || template.ownerId === req.user.id);
+    res.json({ demoMode: seed, user: req.user, users, invitations, templates, exercises: all('exercises'), clients, plans: filtered('plans'), sessions: filtered('training_sessions'), logs: filtered('logs'), measurements: filtered('measurements'), assessments: filtered('assessments') });
   });
 
   app.post('/api/invitations', (req, res) => {
@@ -413,6 +414,43 @@ export function createApi({ app, db, seed = true, config = {} }) {
     db.prepare('DELETE FROM plans WHERE id=?').run(current.id); res.json({ ok: true });
   });
 
+  const templateFor = (req, id) => {
+    trainer(req);
+    const template = requiredEntity('workout_templates', id);
+    if (req.user.role !== 'admin' && template.ownerId !== req.user.id) fail(403, 'You do not have access to this workout template.');
+    return template;
+  };
+  const validateTemplate = (body, id, ownerId) => ({ id, ownerId, name: str(body.name, 'Workout name', 120, true), items: itemsValue(body.items), notes: str(body.notes ?? '', 'Workout notes', 5000) });
+  app.post('/api/templates', (req, res) => {
+    trainer(req); checkKeys(req.body, ['name', 'items', 'notes']);
+    res.status(201).json(save('workout_templates', validateTemplate(req.body, `template-${randomUUID()}`, req.user.id)));
+  });
+  app.patch('/api/templates/:id', (req, res) => {
+    const current = templateFor(req, req.params.id); checkKeys(req.body, ['name', 'items', 'notes']);
+    res.json(save('workout_templates', validateTemplate({ ...current, ...req.body }, current.id, current.ownerId)));
+  });
+  app.delete('/api/templates/:id', (req, res) => {
+    templateFor(req, req.params.id);
+    db.prepare('DELETE FROM workout_templates WHERE id=?').run(req.params.id); res.json({ ok: true });
+  });
+  const copyPlan = (req, source) => {
+    checkKeys(req.body, ['clientId', 'date', 'name']);
+    return save('plans', validatePlan(req, { ...source, clientId: req.body.clientId, date: req.body.date, name: req.body.name ?? source.name }, `plan-${randomUUID()}`));
+  };
+  app.post('/api/templates/:id/assign', (req, res) => {
+    const template = templateFor(req, req.params.id);
+    res.status(201).json(copyPlan(req, template));
+  });
+  app.post('/api/plans/:id/copy', (req, res) => {
+    trainer(req); const current = requiredEntity('plans', req.params.id); clientFor(req, current.clientId);
+    res.status(201).json(copyPlan(req, current));
+  });
+  app.post('/api/plans/:id/template', (req, res) => {
+    trainer(req); checkKeys(req.body, ['name']);
+    const current = requiredEntity('plans', req.params.id); clientFor(req, current.clientId);
+    res.status(201).json(save('workout_templates', validateTemplate({ ...current, name: req.body.name ?? current.name }, `template-${randomUUID()}`, req.user.id)));
+  });
+
   const sessionKeys = ['clientId', 'date', 'time', 'duration', 'type', 'location', 'notes'];
   const validateSession = (req, body, id) => {
     const client = clientFor(req, body.clientId);
@@ -472,6 +510,10 @@ export function createApi({ app, db, seed = true, config = {} }) {
   app.post('/api/assessments', (req, res) => {
     trainer(req); checkKeys(req.body, ['clientId', 'date', 'name', 'result', 'unit', 'notes']); clientFor(req, req.body.clientId);
     const assessment = { id: `assessment-${randomUUID()}`, clientId: req.body.clientId, date: dateValue(req.body.date), name: str(req.body.name, 'Assessment name', 120, true), result: num(req.body.result, 'Result', 0, 100000), unit: str(req.body.unit ?? 'reps', 'Unit', 40, true), notes: str(req.body.notes ?? '', 'Assessment notes', 5000) };
+    if (assessment.name.toLowerCase() === 'body fat percentage') {
+      if (assessment.unit !== '%') fail(400, 'Body fat percentage must use percent (%).');
+      num(assessment.result, 'Body fat percentage', 0, 100);
+    } else if (assessment.unit === '%') num(assessment.result, 'Percentage', 0, 100);
     res.status(201).json(save('assessments', assessment));
   });
   app.use('/api', (req, res) => res.status(404).json({ error: 'API route was not found.' }));

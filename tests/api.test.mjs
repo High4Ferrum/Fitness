@@ -483,3 +483,83 @@ test('a private workspace can be activated only once with its setup secret and h
   await f.restart();
   assert.equal((await f.bootstrap(cookie)).user.email, payload.email);
 });
+
+test('admins and coaches build without clients; templates assign independent copies and survive restart', async t => {
+  const token = 'e'.repeat(64), f = await fixture(t, { seed: false, config: { TRAIN_SETUP_TOKEN: token } });
+  const result = await f.request('/auth/setup', { method: 'POST', body: { token, name: 'Owner', email: 'template-owner@example.com', password: 'OwnerPassword123!' } });
+  status(result, 201); const admin = { cookie: result.headers.get('set-cookie').split(';')[0] };
+  status(await f.request('/users', { method: 'POST', cookie: admin.cookie, body: { name: 'Template Coach', email: 'template-coach@example.com', password: 'CoachPassword123!', role: 'coach' } }), 201);
+  const coach = await f.login('template-coach@example.com', 'CoachPassword123!');
+  const { name, items, notes } = planPayload();
+  const payload = { name, items, notes };
+  for (const account of [admin, coach]) {
+    assert.equal((await f.bootstrap(account.cookie)).clients.length, 0);
+    status(await f.request('/templates', { method: 'POST', cookie: account.cookie, body: payload }), 201);
+  }
+  const template = (await f.bootstrap(coach.cookie)).templates[0];
+  assert.equal(template.ownerId, coach.user.id); assert.equal('clientId' in template, false); assert.equal('date' in template, false);
+  assert.equal((await f.bootstrap(admin.cookie)).templates.length, 2);
+  const client = status(await f.request('/clients', { method: 'POST', cookie: coach.cookie, body: { name: 'Template Client', email: 'template-client@example.com', password: 'ClientPassword123!', equipment: [] } }), 201);
+  const copy = status(await f.request(`/templates/${template.id}/assign`, { method: 'POST', cookie: coach.cookie, body: { clientId: client.id, date: day(), name: 'Personal copy' } }), 201);
+  assert.deepEqual(copy.items, items); assert.equal(copy.notes, notes); assert.equal(copy.name, 'Personal copy');
+  status(await f.request(`/templates/${template.id}`, { method: 'PATCH', cookie: coach.cookie, body: { items: [{ ...items[0], sets: 5 }] } }), 200);
+  assert.equal((await f.bootstrap(coach.cookie)).plans.find(plan => plan.id === copy.id).items[0].sets, 3);
+  status(await f.request(`/plans/${copy.id}`, { method: 'PATCH', cookie: coach.cookie, body: { items: [{ ...items[0], weight: 125 }] } }), 200);
+  assert.equal((await f.bootstrap(coach.cookie)).templates[0].items[0].weight, 40);
+  status(await f.request(`/templates/${template.id}`, { method: 'DELETE', cookie: coach.cookie }), 200);
+  await f.restart();
+  const data = await f.bootstrap(coach.cookie);
+  assert.deepEqual(data.templates, []); assert.equal(data.plans.find(plan => plan.id === copy.id).items[0].weight, 125);
+});
+
+test('workout library and copying enforce template ownership, target client access, and trusted inputs', async t => {
+  const f = await fixture(t), admin = await f.login('admin@form.fit'), coach = await f.login('coach@form.fit'), client = await f.login('jamie@form.fit');
+  const { name, items, notes } = planPayload(), payload = { name, items, notes };
+  const template = status(await f.request('/templates', { method: 'POST', cookie: coach.cookie, body: payload }), 201);
+  status(await f.request('/users', { method: 'POST', cookie: admin.cookie, body: { name: 'Other Coach', email: 'other-template@example.com', password: 'OtherCoach123!', role: 'coach' } }), 201);
+  const other = await f.login('other-template@example.com', 'OtherCoach123!');
+  assert.deepEqual((await f.bootstrap(other.cookie)).templates, []); assert.deepEqual((await f.bootstrap(client.cookie)).templates, []);
+  for (const account of [other, client]) {
+    for (const [path, method, body] of [
+      [`/templates/${template.id}`, 'PATCH', { name: 'Stolen' }], [`/templates/${template.id}`, 'DELETE', undefined],
+      [`/templates/${template.id}/assign`, 'POST', { clientId: 'client-jamie', date: day() }],
+      ['/plans/plan-jamie-lower/copy', 'POST', { clientId: 'client-jamie', date: day() }],
+      ['/plans/plan-jamie-lower/template', 'POST', {}],
+    ]) status(await f.request(path, { method, cookie: account.cookie, body }), 403);
+  }
+  status(await f.request('/templates', { method: 'POST', cookie: client.cookie, body: payload }), 403);
+  for (const changes of [{ ownerId: other.user.id }, { items: [] }, { items: [...items, ...items] }, { items: [{ ...items[0], sets: 0 }] }]) status(await f.request('/templates', { method: 'POST', cookie: coach.cookie, body: { ...payload, ...changes } }), 400);
+  const adminTemplate = status(await f.request('/templates', { method: 'POST', cookie: admin.cookie, body: payload }), 201);
+  status(await f.request(`/templates/${adminTemplate.id}/assign`, { method: 'POST', cookie: admin.cookie, body: { clientId: 'client-jamie', date: day(), items: [] } }), 400);
+  status(await f.request(`/templates/${adminTemplate.id}/assign`, { method: 'POST', cookie: admin.cookie, body: { clientId: 'client-jamie', date: '2026-02-30' } }), 400);
+  const otherTemplate = status(await f.request('/templates', { method: 'POST', cookie: other.cookie, body: payload }), 201);
+  status(await f.request(`/templates/${otherTemplate.id}/assign`, { method: 'POST', cookie: other.cookie, body: { clientId: 'client-jamie', date: day() } }), 403);
+});
+
+test('completed workouts copy prescriptions without results and can be saved to the library', async t => {
+  const f = await fixture(t), coach = await f.login('coach@form.fit'), client = await f.login('jamie@form.fit');
+  const source = status(await f.request('/plans', { method: 'POST', cookie: coach.cookie, body: planPayload() }), 201);
+  status(await f.request('/logs', { method: 'POST', cookie: client.cookie, body: { clientId: source.clientId, planId: source.id, date: day(), items: source.items.map(({ exerciseId, sets, reps, weight }) => ({ exerciseId, sets, reps, weight: weight + 5 })) } }), 201);
+  const copy = status(await f.request(`/plans/${source.id}/copy`, { method: 'POST', cookie: coach.cookie, body: { clientId: 'client-maya', date: day(1) } }), 201);
+  assert.notEqual(copy.id, source.id); assert.deepEqual(copy.items, source.items); assert.equal(copy.notes, source.notes);
+  const template = status(await f.request(`/plans/${source.id}/template`, { method: 'POST', cookie: coach.cookie, body: {} }), 201);
+  assert.deepEqual(template.items, source.items);
+  const data = await f.bootstrap(coach.cookie); assert.equal(data.logs.some(log => log.planId === copy.id), false);
+  status(await f.request(`/plans/${source.id}`, { method: 'PATCH', cookie: coach.cookie, body: { name: 'History edit' } }), 409);
+  const admin = await f.login('admin@form.fit');
+  status(await f.request('/exercises/ex-bench', { method: 'DELETE', cookie: admin.cookie }), 200);
+  status(await f.request(`/templates/${template.id}/assign`, { method: 'POST', cookie: coach.cookie, body: { clientId: 'client-jamie', date: day() } }), 400);
+  assert.equal((await f.bootstrap(coach.cookie)).plans.length, data.plans.length);
+});
+
+test('body fat assessments store percent history with bounds and client access', async t => {
+  const f = await fixture(t), coach = await f.login('coach@form.fit'), client = await f.login('jamie@form.fit');
+  const payload = { clientId: 'client-jamie', date: day(), name: 'Body fat percentage', result: 24.5, unit: '%', notes: 'Measured with body composition scale' };
+  const assessment = status(await f.request('/assessments', { method: 'POST', cookie: coach.cookie, body: payload }), 201);
+  for (const result of [-0.1, 100.1]) status(await f.request('/assessments', { method: 'POST', cookie: coach.cookie, body: { ...payload, result } }), 400);
+  status(await f.request('/assessments', { method: 'POST', cookie: coach.cookie, body: { ...payload, unit: 'reps' } }), 400);
+  status(await f.request('/assessments', { method: 'POST', cookie: client.cookie, body: payload }), 403);
+  await f.restart();
+  assert.deepEqual((await f.bootstrap(client.cookie)).assessments.find(record => record.id === assessment.id), { id: assessment.id, ...payload });
+  const maya = await f.login('maya@form.fit'); assert.equal((await f.bootstrap(maya.cookie)).assessments.some(record => record.id === assessment.id), false);
+});

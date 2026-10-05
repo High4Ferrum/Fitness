@@ -18,12 +18,20 @@ Coaches or administrators create client invitation links on My clients. Links ex
 
 The text Sign out button is always in the top bar and returns the demo to the role choices. Signing out invalidates its server-side session. Hash-link navigation works in already-open app tabs.
 
+## Reusable workouts and body fat assessments
+
+Admins and coaches can build without clients by choosing Workout library · assign later. The additive workout_templates table stores date-free/client-free prescriptions and an immutable ownerId. Coaches access their own library; administrators access all. Clients receive no templates in bootstrap and cannot mutate or assign them.
+
+Copy to client assigns an independent plan from a template or existing client plan, keeping all prescriptions and notes without completion logs. Save to library copies an existing plan into the caller's library. Editing/deleting a template leaves existing client copies intact. New assignments validate active exercises and target client access. Session scheduling still requires a client, with visible guidance for empty workspaces.
+
+Body fat % is a fitness assessment with the canonical name Body fat percentage and % unit. The server validates the unit and 0–100 bounds. Progress displays the latest measured value and retains the full assessment history; clients can read their own results. No body fat estimate is calculated from BMI or measurements.
+
 ## Verification
 
 - TypeScript/Vite/Rollup build.
-- 20 API contracts on Express, and the same 20 on workerd.
+- 24 API contracts on Express, and the same 24 on workerd.
 - Six demo browser workflows, including role switching and mobile sign-out.
-- Full isolated production browser flow: owner setup → coach invitation → client registration → workout assignment → completion → sign-out → saved login.
+- Full isolated production browser flow: owner setup → admin and coach building with zero clients → client registration → template copying → independent editing → workout completion → sign-out → saved login → completed workout copying → body fat recording and client visibility.
 - Deployed demo smoke tests include registration and training workflows.
 - Real deployed configuration and protected record access checked without consuming the owner’s activation link.
 

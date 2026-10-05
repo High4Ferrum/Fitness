@@ -26,6 +26,16 @@ Links expire after seven days and work once. Pending invitations can be revoked.
 
 **Sign out** is a visible button at the top of every workspace, including on mobile. In the demo, sign out to return to the Admin/Coach/Client choices.
 
+## Reusable workouts and assessments
+
+Admins and coaches can build workouts before adding clients. Open **Workout plans → Build a workout**, choose **Workout library · assign later**, add exercises and save. These reusable workouts need no client or date. Coaches manage their own library; administrators can manage all libraries.
+
+Open **Workout library → Copy to client**, choose the client and date, then copy. Sets, repetitions, loads, rest, exercise notes and workout notes are copied into an independent plan. Editing or removing the library workout leaves existing client plans intact. Assigned and completed workouts also have **Copy to client** and **Save to library** controls; copies include the prescription, without completed results. Archived exercises must be replaced before making a new assignment.
+
+**Schedule session** requires a client assigned to the coach (or any client for an administrator). Add or invite that client from **My clients** first. The empty schedule explains this requirement.
+
+Under **Progress & assessments**, select a client and use **Body fat %** to record a measured body fat percentage, date and optional measurement method in Notes. Percent values must be from 0 to 100. The latest recorded value appears in the progress cards; all readings remain in assessment history and are visible to that client.
+
 ## Run locally
 
 Install Node.js 24 or newer, open this folder, then run:
@@ -60,7 +70,7 @@ Maya, Chris, and Jordan also have sample client accounts using their first name 
 - **Admin:** add, edit and archive exercises; write instructions and cues; tag equipment; choose video links and alternatives; provision coaches; reset staff passwords; reassign clients.
 - **Coach:** create client accounts, update goals, build weekly workouts, check equipment and alternatives, schedule online or in-person sessions, record assessments, and review progress.
 - **Client:** view assigned workouts and sessions, record actual sets/repetitions/load and notes, complete workouts, update equipment, and record body measurements.
-- **Progress:** strength history, completion history, assessments, BMI, and waist-to-hip ratio.
+- **Progress:** strength history, completion history, assessments, body fat percentage, BMI, and waist-to-hip ratio.
 - **Access:** server-enforced roles and client ownership. Coaches see their assigned clients. Clients see their own records. Passwords use salted scrypt hashes. Sessions use hashed tokens and HttpOnly/SameSite cookies; password resets revoke sessions.
 
 Archived exercises remain readable in historical records. Completed workout prescriptions cannot be edited or deleted. Scheduling rejects overlaps for the client or their coach. Account and client-profile changes use atomic transactions.
@@ -104,7 +114,7 @@ npm run test:e2e:cloudflare
 npm run test:e2e:registration
 ```
 
-The 20 API contracts run against both Express and the real Cloudflare runtime: authentication, role and ownership restrictions, exercise management, coaching, scheduling, progress, password changes, request validation, and persistence after a restart. Each test uses isolated storage.
+The 24 API contracts run against both Express and the real Cloudflare runtime: authentication, role and ownership restrictions, exercise management, coaching, scheduling, progress, password changes, request validation, and persistence after a restart. Each test uses isolated storage.
 
 The six demo browser workflows cover admin library/account management, coach assignment and client completion, equipment/measurements, assessments/password changes, and mobile layouts. Windows/macOS use an installed Chrome browser; Linux uses the bundled Chromium package. Browser tests use UTC to keep date-only test inputs consistent at timezone boundaries. The Cloudflare browser suite uses a separate temporary database. The private-registration browser suite covers first-owner activation, an invited client choosing their password, workout assignment and completion, mobile sign-out, and signing back in to saved data.
 

@@ -1,4 +1,14 @@
 .workouts-page { --workouts-green: #295c48; --workouts-ink: #273b34; }
+.workout-section-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 24px 0; }
+.workout-section-tabs button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #e2e7df; border-radius: 9px; padding: 11px 15px; background: white; color: #617268; cursor: pointer; font: inherit; font-size: 13px; }
+.workout-section-tabs button.active { background: #eaf1e5; border-color: #9eaf93; color: #295c48; font-weight: 600; }
+.workout-section-tabs button span { font-size: 11px; }
+.workout-reuse-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 16px 0; }
+.workout-reuse-actions .button { font-size: 12px; }
+.workout-template-library > .workout-library-search { margin-bottom: 24px; }
+.workout-template-owner { font-size: 11px; color: #7d877c; }
+.workout-preview-row small { font-size: 11px; color: #7d877c; overflow-wrap: anywhere; }
+.workout-template-library .workout-coaching-note { white-space: pre-wrap; overflow-wrap: anywhere; }
 .workouts-subtitle { color: #7a827e; font-size: 14px; margin-top: 10px; line-height: 1.7; }
 .workouts-controls { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin: 32px 0 23px; }
 .week-navigation { display: flex; align-items: center; gap: 15px; }

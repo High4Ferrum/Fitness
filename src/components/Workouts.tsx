@@ -1,8 +1,9 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown, Clock3, Dumbbell, Eye, Plus, Search, Pencil, Trash2, TriangleAlert, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Copy, Check, CheckCircle2, ChevronDown, Clock3, Dumbbell, Eye, Plus, Search, Pencil, Trash2, TriangleAlert, X } from 'lucide-react';
 import { api } from '../api';
-import type { Client, Data, Exercise, Plan, PlanItem, WorkoutLog } from '../types';
+import type { Client, Data, Exercise, Plan, PlanItem, WorkoutLog, WorkoutTemplate } from '../types';
 import Modal from './Modal';
+import CopyWorkout from './CopyWorkout';
 import './Workouts.css';
 
 interface Props { data: Data; refresh: () => Promise<void>; notify: (message: string) => void; }
@@ -25,6 +26,8 @@ export default function Workouts({ data, refresh, notify }: Props) {
   const [clientFilter, setClientFilter] = useState('all');
   const [dayFilter, setDayFilter] = useState<string | null>(null);
   const [builder, setBuilder] = useState<{ plan?: Plan; date: string } | null>(null);
+  const [section, setSection] = useState<'week' | 'library'>('week');
+  const [copying, setCopying] = useState<Plan | WorkoutTemplate | null>(null);
   const [logging, setLogging] = useState<Plan | null>(null);
   const [viewing, setViewing] = useState<Plan | null>(null);
   const [deleting, setDeleting] = useState<Plan | null>(null);
@@ -48,8 +51,10 @@ export default function Workouts({ data, refresh, notify }: Props) {
   return <div className="workouts-page">
     <div className="page-heading">
       <div><p className="eyebrow">A LITTLE STRONGER, EVERY WEEK</p><h1>{isClient ? 'Your workouts' : 'Weekly workouts'}</h1><p className="workouts-subtitle">{isClient ? 'Your plan is here. Show up, make progress, and make it yours.' : 'Thoughtful plans. Consistent progress. One week at a time.'}</p></div>
-      {!isClient && <button className="button primary" onClick={() => setBuilder({ date: dayFilter || week })} disabled={!data.clients.length}><Plus size={18} /> Build a workout</button>}
+      {!isClient && <button className="button primary" onClick={() => setBuilder({ date: dayFilter || week })}><Plus size={18} /> Build a workout</button>}
     </div>
+    {!isClient && <div className="workout-section-tabs" aria-label="Workout views"><button className={section === 'week' ? 'active' : ''} aria-pressed={section === 'week'} onClick={() => setSection('week')}><Clock3 size={16} />Weekly workouts</button><button className={section === 'library' ? 'active' : ''} aria-pressed={section === 'library'} onClick={() => setSection('library')}><BookOpen size={16} />Workout library <span>{data.templates.length}</span></button></div>}
+    {section === 'library' && !isClient ? <TemplateLibrary data={data} refresh={refresh} notify={notify} onCopy={setCopying} /> : <>
     <div className="workouts-controls">
       <div className="week-navigation">
         <button className="workouts-icon-button" aria-label="Previous week" onClick={() => moveWeek(-7)}><ArrowLeft size={18} /></button>
@@ -69,7 +74,7 @@ export default function Workouts({ data, refresh, notify }: Props) {
       })}
     </div>
     <div className="workouts-list-heading"><div><h2>{dayFilter ? fullDate(dayFilter) : 'The weekly lineup'}</h2><span>{weekPlans.length} {weekPlans.length === 1 ? 'workout' : 'workouts'} planned <span className="workouts-dot">·</span> {completedCount} completed</span></div>{dayFilter && <button className="button ghost" onClick={() => setDayFilter(null)}>Show full week <X size={14} /></button>}</div>
-    {displayed.length === 0 ? <div className="empty-state workouts-empty"><div className="workouts-empty-icon"><Dumbbell size={32} /></div><h3>{isClient ? 'Room for your next workout' : 'A fresh start for the week'}</h3><p>{isClient ? 'Your coach will add your workouts here. Use the arrows to explore other weeks.' : dayFilter ? 'No workouts are planned for this day yet.' : 'Build a workout and give your clients a plan to feel good about.'}</p>{!isClient && data.clients.length > 0 && <button className="button primary" onClick={() => setBuilder({ date: dayFilter || week })}><Plus size={17} /> Build a workout</button>}</div> : <div className="workout-cards">
+    {displayed.length === 0 ? <div className="empty-state workouts-empty"><div className="workouts-empty-icon"><Dumbbell size={32} /></div><h3>{isClient ? 'Room for your next workout' : 'A fresh start for the week'}</h3><p>{isClient ? 'Your coach will add your workouts here. Use the arrows to explore other weeks.' : !data.clients.length ? 'Build reusable workouts now. Invite a client when you’re ready to assign them.' : dayFilter ? 'No workouts are planned for this day yet.' : 'Build a workout and give your clients a plan to feel good about.'}</p>{!isClient && <button className="button primary" onClick={() => setBuilder({ date: dayFilter || week })}><Plus size={17} /> Build a workout</button>}</div> : <div className="workout-cards">
       {displayed.map(plan => {
         const client = data.clients.find(item => item.id === plan.clientId);
         const log = data.logs.find(item => item.planId === plan.id);
@@ -80,23 +85,67 @@ export default function Workouts({ data, refresh, notify }: Props) {
           {!isClient && <div className="workout-client"><span className="workout-client-avatar" style={{ background: client?.color || '#d7e4e0' }}>{client?.name.split(' ').map(part => part[0]).slice(0, 2).join('') || '?'}</span><span>{client?.name || 'Client'}</span></div>}
           <div className="workout-card-exercises">{plan.items.slice(0, 3).map((item, index) => <div key={`${item.exerciseId}-${index}`} className="workout-preview-row"><span className="workout-exercise-icon"><Dumbbell size={16} /></span><div><strong>{exerciseById(item.exerciseId)?.name || 'Exercise'}</strong><span>{item.sets} × {item.reps} reps{item.weight > 0 ? ` · ${item.weight} lb` : ' · Bodyweight'}</span></div></div>)}{plan.items.length > 3 && <span className="workout-more-exercises">+ {plan.items.length - 3} more {plan.items.length - 3 === 1 ? 'exercise' : 'exercises'}</span>}</div>
           {equipmentFlags.length > 0 && <div className="workout-equipment-note"><TriangleAlert size={14} /><span>{equipmentFlags.length} {equipmentFlags.length === 1 ? 'exercise needs' : 'exercises need'} equipment to review</span></div>}
+          {!isClient && <div className="workout-reuse-actions"><button className="button ghost" onClick={() => setCopying(plan)}><Copy size={15} />Copy to client</button><SaveToLibrary plan={plan} onSaved={async () => { await saved('Workout saved to your library.'); }} notify={notify} /></div>}
           <div className="workout-card-footer"><span>{plan.items.length} {plan.items.length === 1 ? 'exercise' : 'exercises'}</span><div>{log ? <button className="button secondary" onClick={() => setViewing(plan)}><Eye size={15} /> View results</button> : isClient ? <><button className="button ghost" onClick={() => setViewing(plan)} aria-label={`View ${plan.name}`}><Eye size={17} /></button><button className="button primary" onClick={() => setLogging(plan)}>Log workout <ArrowRight size={15} /></button></> : <><button className="workouts-icon-button" aria-label={`Remove ${plan.name}`} onClick={() => { setDeleting(plan); setDeleteError(''); }}><Trash2 size={16} /></button><button className="button secondary" onClick={() => setBuilder({ plan, date: plan.date })}><Pencil size={14} /> Edit workout</button></>}</div></div>
         </article>;
       })}
     </div>}
-    {builder && <PlanBuilder data={data} existing={builder.plan} initialDate={builder.date} initialClientId={clientFilter !== 'all' ? clientFilter : data.clients[0]?.id || ''} onClose={() => setBuilder(null)} onSaved={async () => { await saved(builder.plan ? 'Workout updated.' : 'Workout added to the week.'); setBuilder(null); }} />}
+    </>}
+    {builder && <PlanBuilder data={data} existing={builder.plan} initialDate={builder.date} initialClientId={section === 'library' ? '' : clientFilter !== 'all' ? clientFilter : data.clients[0]?.id || ''} onClose={() => setBuilder(null)} onSaved={async library => { await saved(library ? 'Workout saved to your library.' : builder.plan ? 'Workout updated.' : 'Workout added to the week.'); if (library) setSection('library'); setBuilder(null); }} />}
+    {copying && <CopyWorkout data={data} source={copying} initialDate={localDate(new Date())} onClose={() => setCopying(null)} onSaved={async date => { await saved('Workout copied to the client.'); setCopying(null); setWeek(startOfWeek(readDate(date))); setDayFilter(null); setClientFilter('all'); setSection('week'); }} />}
     {logging && ownClient && <LogWorkout data={data} plan={logging} clientId={ownClient.id} onClose={() => setLogging(null)} onSaved={async () => { await saved('Workout complete. Every session counts!'); setLogging(null); }} />}
     {viewing && <WorkoutDetails data={data} plan={viewing} log={data.logs.find(log => log.planId === viewing.id)} onClose={() => setViewing(null)} onLog={isClient && !data.logs.some(log => log.planId === viewing.id) ? () => { setLogging(viewing); setViewing(null); } : undefined} />}
     {deleting && <Modal title="Remove workout?" onClose={() => { if (!deleteBusy) setDeleting(null); }}><p className="workouts-modal-description">Remove “{deleting.name}” from the plan for {shortDate(deleting.date)}? Completed workouts are kept as part of the client's history.</p>{deleteError && <p role="alert" className="workouts-form-error">{deleteError}</p>}<div className="modal-actions"><button className="button secondary" disabled={deleteBusy} onClick={() => setDeleting(null)}>Keep workout</button><button className="button workouts-danger" disabled={deleteBusy} onClick={removePlan}>{deleteBusy ? 'Removing…' : 'Remove workout'}</button></div></Modal>}
   </div>;
 }
 
-function PlanBuilder({ data, existing, initialDate, initialClientId, onClose, onSaved }: { data: Data; existing?: Plan; initialDate: string; initialClientId: string; onClose: () => void; onSaved: () => Promise<void> }) {
+function SaveToLibrary({ plan, onSaved, notify }: { plan: Plan; onSaved: () => Promise<void>; notify: (message: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    setBusy(true);
+    try { await api(`/plans/${plan.id}/template`, 'POST', {}); await onSaved(); }
+    catch (error) { notify((error as Error).message); }
+    finally { setBusy(false); }
+  }
+  return <button className="button ghost" disabled={busy} onClick={save}><BookOpen size={15} />{busy ? 'Saving…' : 'Save to library'}</button>;
+}
+
+function TemplateLibrary({ data, refresh, notify, onCopy }: Props & { onCopy: (template: WorkoutTemplate) => void }) {
+  const [search, setSearch] = useState('');
+  const [editing, setEditing] = useState<WorkoutTemplate | null>(null);
+  const [deleting, setDeleting] = useState<WorkoutTemplate | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const templates = data.templates.filter(template => template.name.toLowerCase().includes(search.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
+  async function remove() {
+    if (!deleting) return;
+    setBusy(true); setError('');
+    try { await api(`/templates/${deleting.id}`, 'DELETE'); await refresh(); setDeleting(null); notify('Workout removed from the library. Client copies are kept.'); }
+    catch (cause) { setError((cause as Error).message); }
+    finally { setBusy(false); }
+  }
+  return <section className="workout-template-library">
+    <div className="workouts-list-heading"><div><h2>Your reusable workouts</h2><span>Build once. Copy to any of your clients, on any date.</span></div></div>
+    <label className="workout-library-search"><Search size={17} /><input aria-label="Search workout library" placeholder="Search your workouts" value={search} onChange={event => setSearch(event.target.value)} /></label>
+    {!data.clients.length && <p className="workout-coaching-note">You can build and save workouts now. Add or invite a client to start assigning copies.</p>}
+    {templates.length ? <div className="workout-cards">{templates.map(template => <article className="workout-card panel" key={template.id}>
+      <div className="workout-card-top"><span className="badge sage"><BookOpen size={13} />Reusable workout</span>{data.user.role === 'admin' && <span className="workout-template-owner">{data.users.find(user => user.id === template.ownerId)?.name || 'Coach'}</span>}</div>
+      <h3>{template.name}</h3>
+      <div className="workout-card-exercises">{template.items.map((item, index) => <div className="workout-preview-row" key={index}><span className="workout-exercise-icon"><Dumbbell size={16} /></span><div><strong>{data.exercises.find(exercise => exercise.id === item.exerciseId)?.name || 'Exercise'}</strong><span>{item.sets} × {item.reps} reps · {item.weight ? `${item.weight} lb` : 'Bodyweight'} · {item.rest}s rest</span>{item.notes && <small>{item.notes}</small>}</div></div>)}</div>
+      {template.notes && <p className="workout-coaching-note">{template.notes}</p>}
+      <div className="workout-reuse-actions"><button className="button primary" onClick={() => onCopy(template)}><Copy size={15} />Copy to client</button><button className="button secondary" onClick={() => setEditing(template)}><Pencil size={14} />Edit workout</button><button className="workouts-icon-button" aria-label={`Remove ${template.name}`} onClick={() => { setDeleting(template); setError(''); }}><Trash2 size={16} /></button></div>
+    </article>)}</div> : <div className="empty-state workouts-empty"><BookOpen size={28} /><h3>{search ? 'No matching workouts' : 'Start your workout library'}</h3><p>{search ? 'Try a different search.' : 'Use Build a workout and choose Workout library to save a reusable plan. No client or date is needed.'}</p></div>}
+    {editing && <PlanBuilder data={data} template={editing} initialDate={localDate(new Date())} initialClientId="" onClose={() => setEditing(null)} onSaved={async () => { await refresh(); setEditing(null); notify('Library workout updated. Existing client copies are kept.'); }} />}
+    {deleting && <Modal title="Remove library workout?" onClose={() => !busy && setDeleting(null)}><p className="workouts-modal-description">Remove “{deleting.name}” from your library? Workouts already copied to clients remain in their plans.</p>{error && <p className="workouts-form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="button secondary" disabled={busy} onClick={() => setDeleting(null)}>Keep workout</button><button className="button workouts-danger" disabled={busy} onClick={remove}>{busy ? 'Removing…' : 'Remove workout'}</button></div></Modal>}
+  </section>;
+}
+
+function PlanBuilder({ data, existing, template, initialDate, initialClientId, onClose, onSaved }: { data: Data; existing?: Plan; template?: WorkoutTemplate; initialDate: string; initialClientId: string; onClose: () => void; onSaved: (library: boolean) => Promise<void> }) {
   const [clientId, setClientId] = useState(existing?.clientId || initialClientId);
-  const [name, setName] = useState(existing?.name || '');
+  const [name, setName] = useState(existing?.name || template?.name || '');
   const [date, setDate] = useState(existing?.date || initialDate);
-  const [notes, setNotes] = useState(existing?.notes || '');
-  const [items, setItems] = useState<PlanItem[]>(existing ? existing.items.map(item => ({ ...item })) : []);
+  const [notes, setNotes] = useState(existing?.notes || template?.notes || '');
+  const [items, setItems] = useState<PlanItem[]>((existing || template)?.items.map(item => ({ ...item })) || []);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -108,14 +157,19 @@ function PlanBuilder({ data, existing, initialDate, initialClientId, onClose, on
     event.preventDefault(); setError('');
     if (!items.length) { setError('Add at least one exercise to this workout.'); return; }
     setBusy(true);
-    try { await api(existing ? `/plans/${existing.id}` : '/plans', existing ? 'PATCH' : 'POST', { clientId, name: name.trim(), date, items, notes: notes.trim() }); await onSaved(); }
+    try {
+      const library = !clientId;
+      await api(library ? template ? `/templates/${template.id}` : '/templates' : existing ? `/plans/${existing.id}` : '/plans', existing || template ? 'PATCH' : 'POST', library ? { name: name.trim(), items, notes: notes.trim() } : { clientId, name: name.trim(), date, items, notes: notes.trim() });
+      await onSaved(library);
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to save the workout.'); }
     finally { setBusy(false); }
   }
-  return <Modal title={existing ? 'Edit workout' : 'Build a workout'} onClose={() => { if (!busy) onClose(); }}><form onSubmit={submit} className="workout-builder">
+  return <Modal title={existing || template ? 'Edit workout' : 'Build a workout'} onClose={() => { if (!busy) onClose(); }}><form onSubmit={submit} className="workout-builder">
     <p className="workouts-modal-description">Choose your movements, set the intention, and make it personal.</p>
     <fieldset disabled={busy} className="workout-form-fieldset">
-      <div className="form-grid"><label className="field">Client<select required value={clientId} onChange={event => setClientId(event.target.value)}>{data.clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label className="field">Workout date<input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label></div>
+      {!template && <div className="form-grid"><label className="field">Client<select value={clientId} onChange={event => setClientId(event.target.value)}>{!existing && <option value="">Workout library · assign later</option>}{data.clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>{clientId && <label className="field">Workout date<input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label>}</div>}
+      {!clientId && <p className="workout-coaching-note">This reusable workout stays in your workout library. Copy it to a client when you’re ready.</p>}
       <label className="field">Workout name<input required maxLength={100} value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Upper body · strength foundations" /></label>
       <div className="workout-builder-section-title"><h3>Exercises</h3><span>{items.length} added</span></div>
       {items.length === 0 && <div className="workout-builder-placeholder"><Dumbbell size={22} /><p>Your workout starts with one movement.<br />Choose an exercise from the library below.</p></div>}
@@ -134,7 +188,7 @@ function PlanBuilder({ data, existing, initialDate, initialClientId, onClose, on
       <label className="field workout-session-notes">Workout notes<textarea maxLength={2000} rows={3} value={notes} onChange={event => setNotes(event.target.value)} placeholder="Warm-up, focus for the session, or anything your client should know…" /></label>
     </fieldset>
     {error && <p className="workouts-form-error" role="alert">{error}</p>}
-    <div className="modal-actions"><button type="button" className="button secondary" disabled={busy} onClick={onClose}>Cancel</button><button type="submit" className="button primary" disabled={busy}>{busy ? 'Saving…' : existing ? 'Save changes' : 'Save workout'} <Check size={16} /></button></div>
+    <div className="modal-actions"><button type="button" className="button secondary" disabled={busy} onClick={onClose}>Cancel</button><button type="submit" className="button primary" disabled={busy}>{busy ? 'Saving…' : existing || template ? 'Save changes' : 'Save workout'} <Check size={16} /></button></div>
   </form></Modal>;
 }
 
