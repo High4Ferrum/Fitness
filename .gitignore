@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/
+*.tsbuildinfo
+.env
+playwright-report/
+test-results/
+.wrangler/
+.worker-build/
+.dev.vars*
+.env.*
