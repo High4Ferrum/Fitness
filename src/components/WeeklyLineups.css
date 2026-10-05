@@ -11,7 +11,7 @@
 .weekly-day-summary.training { background:#edf3e8;color:#36553e; }
 .weekly-day-summary.rest { color:#879580;background:#f8f9f5; }
 .weekly-routine-selectors { display:flex;flex-direction:column;gap:10px;margin:22px 0 15px; }
-.weekly-routine-selector { display:grid;grid-template-columns:100px minmax(0,1fr);align-items:center;gap:12px;margin:0; }
+.weekly-routine-selector.field { display:grid;grid-template-columns:100px minmax(0,1fr);align-items:center;gap:12px;margin:0; }
 .weekly-routine-selector select { min-width:0; }
 .weekly-day-count { font-size:12px;color:#76896a;margin:15px 0 23px; }
 .weekly-assignment-preview { border:1px solid #dce5d4;border-radius:10px;padding:17px;margin-top:20px;font-size:13px;color:#36553e;background:#f8faf4; }
@@ -27,4 +27,4 @@
 .assigned-lineup > div > span { display:block;margin:6px 0;font-size:12px;color:#7d8976;line-height:1.7;overflow-wrap:anywhere; }
 .assigned-lineup > span { flex-shrink:0;font-size:12px;color:#55734b; }
 .workout-lineup-label { font-size:11px;color:#76866b;margin-bottom:12px;overflow-wrap:anywhere; }
-@media(max-width:650px){.weekly-routine-selector{grid-template-columns:75px minmax(0,1fr);gap:8px}.weekly-routine-selector>span{font-size:12px}.weekly-lineup-card{padding:18px!important}.weekly-day-summary{padding:9px 8px;gap:8px}.assigned-lineup{align-items:flex-start;flex-direction:column;gap:8px}.workout-hierarchy{font-size:11px}.weekly-library-heading>.button{width:100%;justify-content:center}}
+@media(max-width:650px){.weekly-routine-selector.field{grid-template-columns:75px minmax(0,1fr);gap:8px}.weekly-routine-selector>span{font-size:12px}.weekly-lineup-card{padding:18px!important}.weekly-day-summary{padding:9px 8px;gap:8px}.assigned-lineup{align-items:flex-start;flex-direction:column;gap:8px}.workout-hierarchy{font-size:11px}.weekly-library-heading>.button{width:100%;justify-content:center}}
