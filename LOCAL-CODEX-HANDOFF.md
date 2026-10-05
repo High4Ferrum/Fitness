@@ -1,34 +1,30 @@
-# FORM local continuation checkpoint
+# Train with me continuation checkpoint
 
-The existing app from the original cloud handoff has been continued without rebuilding its interface or removing the admin/coach/client features.
+The original React fitness app has been continued and renamed. The frontend, Express backend and Cloudflare Worker share the same account, permission and training rules.
 
-## Preview
+## Deployed apps
 
-- Local Cloudflare runtime: run `npm ci` and `npm run dev:cloudflare`, then open http://127.0.0.1:8787.
-- Original Express/Vite development: run `npm run dev`, then open http://localhost:5173.
-- Public Cloudflare preview: https://form-fitness-preview.highferrum.workers.dev
-- Destination repository: https://github.com/High4Ferrum/Fitness
+- Real workspace: https://train-with-me.highferrum.workers.dev
+- Separate shared demo: https://form-fitness-preview.highferrum.workers.dev
+- GitHub: https://github.com/High4Ferrum/Fitness
 
-Use the role buttons on the login screen for the public demo. The sample workspace is persistent; restarting or redeploying does not reset it.
+Both use Cloudflare workers.dev domains. No custom domain routes are configured. Each Worker has its own SQLite-backed FormDatabase Durable Object; names and migration v1 must remain stable to preserve data. Internal FORM environment names and the form_session cookie are kept for compatibility.
 
-## Implementation
+## Accounts and registration
 
-The shared API is in `server/api.mjs`. Express uses Node's local SQLite implementation; Cloudflare uses synchronous SQL in a SQLite-backed Durable Object. Database transactions use each runtime's native transaction facility. Password hashes, cookie sessions, validation, role permissions, scheduling conflicts and historical workout protections remain shared.
+The real workspace has demo seeding disabled. A private one-time activation guide outside this repository lets the owner choose their administrator credentials. The setup secret is stored as a Cloudflare secret; nobody can claim the first account without that link. After the first account exists, setup is disabled. Only exercises are seeded for that real workspace.
 
-`wrangler.jsonc` includes frontend assets, the database binding and SQLite class migration. The preview environment seeds sample data; production disables demo seeding and expects bootstrap admin secrets. The deployment uses Cloudflare's `workers.dev` URL and does not modify custom domains.
+Coaches or administrators create client invitation links on My clients. Links expire after seven days, have one use, bind an email and coach, and are stored as hashes. Clients choose their own passwords. Pending invitations can be revoked; issuing a replacement for the same coach/email invalidates the previous link. Link sharing is manual. Direct coach-created accounts remain available under Add client.
 
-## Verified
+The text Sign out button is always in the top bar and returns the demo to the role choices. Signing out invalidates its server-side session. Hash-link navigation works in already-open app tabs.
 
-- Frontend TypeScript/Vite production build.
-- 17 original Express API contracts.
-- 17 Cloudflare runtime API contracts, including persistence across a runtime restart.
-- Five Cloudflare browser workflows, including mobile layouts.
-- Live sign-in for admin, coach and client; admin exercise create/edit; coach workout assignment; client completion; persisted results after reload.
+## Verification
 
-The browser configuration supports installed Chrome on Windows/macOS and bundled Chromium on Linux. All automated local tests use isolated sample databases. The live smoke test preserves demo passwords and leaves a uniquely named completed sample workout as evidence.
+- TypeScript/Vite/Rollup build.
+- 20 API contracts on Express, and the same 20 on workerd.
+- Six demo browser workflows, including role switching and mobile sign-out.
+- Full isolated production browser flow: owner setup → coach invitation → client registration → workout assignment → completion → sign-out → saved login.
+- Deployed demo smoke tests include registration and training workflows.
+- Real deployed configuration and protected record access checked without consuming the owner’s activation link.
 
-## Credentials
-
-Keep credentials out of source and chat. Local Wrangler authorization is stored outside this source folder. See README.md for standard Wrangler deployment and the documented direct-upload alternative for restricted Windows environments.
-
-Original cloud source commit: dd132a8a2b591225e6cd7fa434c1602da40ba09e.
+Use npm run dev:cloudflare for the local app. Read README.md for deployment, setup, registration and tests. Credentials and activation guides are outside source and must never be uploaded to GitHub.

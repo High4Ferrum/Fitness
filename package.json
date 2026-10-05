@@ -1,5 +1,5 @@
 {
-  "name": "form-fitness",
+  "name": "train-with-me",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -17,7 +17,9 @@
     "deploy:preview": "npm run build && wrangler deploy --env preview",
     "deploy:preview:direct": "npm run build && node scripts/deploy-direct.mjs",
     "test:cloudflare": "node scripts/build-worker.mjs && node --test tests/cloudflare-api.mjs",
-    "test:e2e:cloudflare": "npm run build && playwright test --config playwright.cloudflare.config.mjs"
+    "test:e2e:cloudflare": "npm run build && playwright test --config playwright.cloudflare.config.mjs",
+    "test:e2e:registration": "npm run build && playwright test --config playwright.registration.config.mjs",
+    "deploy:direct": "npm run build && node scripts/deploy-direct.mjs --production"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

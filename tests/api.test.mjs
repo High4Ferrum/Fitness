@@ -27,7 +27,7 @@ const exercisePayload = (overrides = {}) => ({
   alternatives: ['ex-pushup'], ...overrides,
 });
 
-async function fixture(t) {
+async function fixture(t, { seed = true, config = {} } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'form-api-test-'));
   const databasePath = join(directory, 'test.sqlite');
   let app;
@@ -44,14 +44,14 @@ async function fixture(t) {
         compatibilityDate: '2026-10-04', compatibilityFlags: ['nodejs_compat'],
         durableObjects: { FORM_DB: { className: 'FormDatabase', useSQLite: true } },
         resourcePersistencePath: join(directory, 'durable-objects'),
-        bindings: { FORM_SEED_DEMO: '1', FORM_COOKIE_SECURE: '0' },
+        bindings: { FORM_SEED_DEMO: seed ? '1' : '0', FORM_COOKIE_SECURE: '0', ...config },
       }));
       await worker.ready;
       base = 'http://localhost';
       send = (url, init) => worker.dispatchFetch(url, init);
       return;
     }
-    app = createApp({ databasePath, seed: true });
+    app = createApp({ databasePath, seed, config });
     server = await new Promise(resolve => {
       const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
     });
@@ -402,4 +402,84 @@ test('API rejects cross-site mutations, invalid JSON, and unsupported request bo
   status(await f.request('/exercises', { method: 'POST', cookie: admin.cookie, headers: { 'Content-Type': 'application/json' }, rawBody: '{broken' }), 400);
   status(await f.request('/exercises', { method: 'POST', cookie: admin.cookie, headers: { 'Content-Type': 'text/plain' }, rawBody: 'not-json' }), 415);
   status(await f.request('/exercises', { method: 'POST', cookie: admin.cookie, body: [] }), 400);
+});
+
+test('invited clients choose their password, join only their coach, and retain accounts after restart', async t => {
+  const f = await fixture(t);
+  const coach = await f.login('coach@form.fit');
+  const invite = status(await f.request('/invitations', { method: 'POST', cookie: coach.cookie, body: { name: 'Invited Client', email: 'invited@example.com', goal: 'Build consistency' } }), 201);
+  assert.equal(invite.token.length, 64);
+  await f.restart();
+  const details = status(await f.request(`/auth/invitations/${invite.token}`), 200);
+  assert.equal(details.email, 'invited@example.com');
+  assert.equal(details.coachName, 'Alex Morgan');
+  const registration = { token: invite.token, name: 'New Client', password: 'ClientOwnPassword123!', goal: 'Get stronger' };
+  for (const injection of [{ role: 'admin' }, { email: 'other@example.com' }, { coachId: 'user-admin' }]) status(await f.request('/auth/register', { method: 'POST', body: { ...registration, ...injection } }), 400);
+  const result = await f.request('/auth/register', { method: 'POST', body: registration });
+  status(result, 201);
+  assert.equal(result.body.user.role, 'client');
+  assert.equal(result.body.user.email, 'invited@example.com');
+  const cookie = result.headers.get('set-cookie').split(';')[0];
+  const data = await f.bootstrap(cookie);
+  assert.equal(data.clients.length, 1);
+  assert.equal(data.clients[0].coachId, coach.user.id);
+  assert.equal(data.clients[0].goal, 'Get stronger');
+  assert.equal(data.invitations.length, 0);
+  assert.equal(data.clients.some(client => client.id === 'client-jamie'), false);
+  const assigned = status(await f.request('/plans', { method: 'POST', cookie: coach.cookie, body: planPayload(data.clients[0].id) }), 201);
+  assert.equal((await f.bootstrap(cookie)).plans[0].id, assigned.id);
+  status(await f.request(`/auth/invitations/${invite.token}`), 404);
+  status(await f.request('/auth/register', { method: 'POST', body: registration }), 404);
+  await f.restart();
+  const fresh = await f.login('invited@example.com', registration.password);
+  assert.equal((await f.bootstrap(fresh.cookie)).clients[0].id, data.clients[0].id);
+  assert.equal((await f.bootstrap(coach.cookie)).invitations.find(item => item.id === invite.id).status, 'Joined');
+});
+
+test('invitation permissions, revocation, replacement and single use prevent unauthorized registration', async t => {
+  const f = await fixture(t), coach = await f.login('coach@form.fit'), admin = await f.login('admin@form.fit'), client = await f.login('jamie@form.fit');
+  const payload = { name: 'Registration Test', email: 'registration@example.com' };
+  status(await f.request('/invitations', { method: 'POST', body: payload }), 401);
+  status(await f.request('/invitations', { method: 'POST', cookie: client.cookie, body: payload }), 403);
+  status(await f.request('/invitations', { method: 'POST', cookie: coach.cookie, body: { ...payload, coachId: admin.user.id } }), 403);
+  status(await f.request('/invitations', { method: 'POST', cookie: coach.cookie, body: { ...payload, email: 'jamie@form.fit' } }), 409);
+  const old = status(await f.request('/invitations', { method: 'POST', cookie: coach.cookie, body: payload }), 201);
+  const replacement = status(await f.request('/invitations', { method: 'POST', cookie: coach.cookie, body: payload }), 201);
+  status(await f.request(`/auth/invitations/${old.token}`), 404);
+  const outsiderUser = status(await f.request('/users', { method: 'POST', cookie: admin.cookie, body: { name: 'Other Coach', email: 'othercoach@example.com', password: 'OtherCoach123!', role: 'coach' } }), 201);
+  const outsider = await f.login(outsiderUser.email, 'OtherCoach123!');
+  assert.equal((await f.bootstrap(outsider.cookie)).invitations.length, 0);
+  status(await f.request(`/invitations/${replacement.id}`, { method: 'DELETE', cookie: outsider.cookie }), 403);
+  status(await f.request(`/invitations/${replacement.id}`, { method: 'DELETE', cookie: coach.cookie }), 200);
+  status(await f.request(`/auth/invitations/${replacement.token}`), 404);
+  const last = status(await f.request('/invitations', { method: 'POST', cookie: coach.cookie, body: payload }), 201);
+  const register = () => f.request('/auth/register', { method: 'POST', body: { token: last.token, name: 'Registration Test', password: 'Registration123!' } });
+  assert.deepEqual((await Promise.all([register(), register()])).map(result => result.status).sort(), [201, 404]);
+  assert.equal((await f.bootstrap(coach.cookie)).clients.filter(item => item.email === payload.email).length, 1);
+  assert.ok((await f.bootstrap(coach.cookie)).invitations.every(item => !('token' in item) && !('token_hash' in item)));
+});
+
+test('a private workspace can be activated only once with its setup secret and has no demo accounts', async t => {
+  const token = 'a'.repeat(64);
+  const f = await fixture(t, { seed: false, config: { TRAIN_SETUP_TOKEN: token } });
+  assert.equal(status(await f.request('/config'), 200).setupRequired, true);
+  status(await f.request(`/auth/setup/${'b'.repeat(64)}`), 404);
+  const payload = { token, name: 'Workspace Owner', email: 'owner@example.com', password: 'OwnerPassword123!' };
+  status(await f.request('/auth/setup', { method: 'POST', body: { ...payload, role: 'admin' } }), 400);
+  const result = await f.request('/auth/setup', { method: 'POST', body: payload });
+  status(result, 201);
+  const cookie = result.headers.get('set-cookie').split(';')[0];
+  const data = await f.bootstrap(cookie);
+  assert.equal(data.demoMode, false);
+  assert.equal(data.user.role, 'admin');
+  assert.equal(data.users.length, 1);
+  assert.equal(data.clients.length, 0);
+  assert.equal(data.plans.length, 0);
+  assert.equal(data.exercises.length, 19);
+  assert.equal(status(await f.request('/config'), 200).setupRequired, false);
+  status(await f.request(`/auth/setup/${token}`), 409);
+  status(await f.request('/auth/setup', { method: 'POST', body: { ...payload, email: 'imposter@example.com' } }), 409);
+  status(await f.request('/auth/login', { method: 'POST', body: { email: 'admin@form.fit', password: demoPassword } }), 401);
+  await f.restart();
+  assert.equal((await f.bootstrap(cookie)).user.email, payload.email);
 });

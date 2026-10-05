@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "form-fitness",
+  "name": "train-with-me",
   "main": ".worker-build/worker.js",
   "no_bundle": true,
   "build": { "command": "node scripts/build-worker.mjs" },

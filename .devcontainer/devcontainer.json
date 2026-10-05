@@ -1,5 +1,5 @@
 {
-  "name": "FORM fitness app",
+  "name": "Train with me",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "24" }

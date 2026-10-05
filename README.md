@@ -1,10 +1,30 @@
-# FORM
+# Train with me
 
 A personal-training app for admins, coaches, and clients. The existing React/TypeScript interface is preserved. The same validated API runs locally on Express/SQLite and on Cloudflare Workers with persistent SQLite storage in a Durable Object.
 
-**Live demo:** [form-fitness-preview.highferrum.workers.dev](https://form-fitness-preview.highferrum.workers.dev)
+**Your app:** [train-with-me.highferrum.workers.dev](https://train-with-me.highferrum.workers.dev)
+
+**Separate demo:** [form-fitness-preview.highferrum.workers.dev](https://form-fitness-preview.highferrum.workers.dev)
 
 Choose Admin, Coach, or Client on the sign-in screen to explore the sample workspace. The published preview uses sample data and is separate from the production configuration.
+
+## Start your coaching workspace
+
+Use the private activation guide provided with the deployment to create your own administrator account. Choose your name, email and password. The link works only until the first account is created. The real workspace starts with 19 library exercises and no demo accounts, clients, workouts or measurements. The demo uses a separate database.
+
+You can coach clients directly as the administrator, or add coach accounts under **Manage coaches**.
+
+## Client registration
+
+1. Open **My clients → Invite client**.
+2. Enter the client’s name, email and goal. Administrators can choose the assigned coach.
+3. Create and copy the signup link, then send it to that client yourself. The app does not send email automatically.
+4. The client opens the link, chooses their password, and joins the assigned coach.
+5. Assign workouts and sessions. Clients record completed workouts, equipment and measurements.
+
+Links expire after seven days and work once. Pending invitations can be revoked. Creating another invitation for the same email and coach replaces their previous link. Only the assigned coach and administrators can manage that invitation. Registration cannot choose an administrator role or another email or coach. Invitation tokens are stored only as hashes.
+
+**Sign out** is a visible button at the top of every workspace, including on mobile. In the demo, sign out to return to the Admin/Coach/Client choices.
 
 ## Run locally
 
@@ -65,11 +85,11 @@ Worker source is bundled with Rollup using native Node modules. `wrangler.jsonc`
 
 Some restricted Windows environments prevent Wrangler's native build tool from reading parent directories. `scripts/deploy-direct.mjs` uses Cloudflare's documented asset and script upload APIs for the same preview Worker. Supply `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` securely through the shell, then run `npm run deploy:preview:direct`.
 
-Alternatively, `FORM_WRANGLER_AUTH_FILE` can point to an existing Wrangler OAuth credential file. The script reads the credential in memory and never logs it. It deploys only the demo preview and preserves the existing database migration on subsequent uploads.
+Alternatively, `FORM_WRANGLER_AUTH_FILE` can point to an existing Wrangler OAuth credential file. The script reads the credential in memory and never logs it. Without arguments it updates the demo. `npm run deploy:direct` deploys the real `train-with-me` workspace; the first upload requires `FORM_PRODUCTION_SECRET_FILE` pointing to a private JSON file containing only a random `TRAIN_SETUP_TOKEN`. Keep that file outside the repository. Subsequent uploads preserve secret bindings and the existing database migration.
 
 ### Production configuration
 
-The default `form-fitness` Worker configuration uses `FORM_SEED_DEMO=0`. Before using an empty production database, supply `FORM_ADMIN_EMAIL` and `FORM_ADMIN_PASSWORD` with `wrangler secret put`; `FORM_ADMIN_NAME` is optional. Then run `npm run deploy`. These values bootstrap the first administrator only. Demo shortcuts are hidden. Changing the seeding flag does not remove data or accounts from an existing demo database.
+The default `train-with-me` Worker configuration uses `FORM_SEED_DEMO=0`. Set a random 64-character hexadecimal `TRAIN_SETUP_TOKEN` using `wrangler secret put`, then deploy with `npm run deploy`. The first administrator opens the app with `/#setup=TOKEN` and chooses their own credentials. The setup endpoint closes permanently after the first account is created. Demo shortcuts are hidden. Alternatively, `FORM_ADMIN_EMAIL`, `FORM_ADMIN_PASSWORD` and optional `FORM_ADMIN_NAME` can bootstrap an administrator through environment secrets. Changing the seeding flag does not remove data or accounts from an existing demo database.
 
 For the local Express backend, use the corresponding environment variables: `FORM_SEED_DEMO=0`, `FORM_ADMIN_EMAIL`, `FORM_ADMIN_PASSWORD`, optional `FORM_ADMIN_NAME`, `FORM_COOKIE_SECURE=1` behind HTTPS, and optional exact trusted `FORM_ALLOWED_ORIGINS`. `FORM_DB_PATH` selects the database file and `PORT` selects the API port.
 
@@ -81,13 +101,14 @@ npm test
 npm run test:cloudflare
 npm run test:e2e
 npm run test:e2e:cloudflare
+npm run test:e2e:registration
 ```
 
-The 17 API contracts run against both Express and the real Cloudflare runtime: authentication, role and ownership restrictions, exercise management, coaching, scheduling, progress, password changes, request validation, and persistence after a restart. Each test uses isolated storage.
+The 20 API contracts run against both Express and the real Cloudflare runtime: authentication, role and ownership restrictions, exercise management, coaching, scheduling, progress, password changes, request validation, and persistence after a restart. Each test uses isolated storage.
 
-The five browser workflows cover admin library/account management, coach assignment and client completion, equipment/measurements, assessments/password changes, and mobile layouts. Windows/macOS use an installed Chrome browser; Linux uses the bundled Chromium package. Browser tests use UTC to keep date-only test inputs consistent at timezone boundaries. The Cloudflare browser suite uses a separate temporary database.
+The six demo browser workflows cover admin library/account management, coach assignment and client completion, equipment/measurements, assessments/password changes, and mobile layouts. Windows/macOS use an installed Chrome browser; Linux uses the bundled Chromium package. Browser tests use UTC to keep date-only test inputs consistent at timezone boundaries. The Cloudflare browser suite uses a separate temporary database. The private-registration browser suite covers first-owner activation, an invited client choosing their password, workout assignment and completion, mobile sign-out, and signing back in to saved data.
 
-To verify an already deployed demo preview, set `FORM_E2E_BASE_URL` and run `npx playwright test --config playwright.preview.config.mjs`. This checks sign-in for all three roles, admin exercise editing, coach workout assignment, client completion, and persistence after reload. It creates uniquely named sample records and preserves the demo passwords.
+To verify an already deployed demo preview, set `FORM_E2E_BASE_URL` and run `npx playwright test --config playwright.preview.config.mjs`. This checks sign-in for all three roles, admin exercise editing, coach workout assignment, client completion, and persistence after reload. A second live check covers coach invitations, client self-registration, visible sign-out, saved login and rejected reuse of a consumed invitation. It creates uniquely named sample records and preserves the demo passwords.
 
 ## Project layout
 

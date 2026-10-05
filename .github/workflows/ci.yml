@@ -1,4 +1,4 @@
-name: FORM checks
+name: Train with me checks
 on: [push, pull_request]
 jobs:
   validate:
@@ -14,3 +14,4 @@ jobs:
       - run: npm test
       - run: npm run test:cloudflare
       - run: npm run test:e2e:cloudflare
+      - run: npm run test:e2e:registration

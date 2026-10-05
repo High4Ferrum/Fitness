@@ -13,7 +13,7 @@ const worker = new Miniflare(convertV4MiniflareOptions({
   compatibilityDate: '2026-10-04', compatibilityFlags: ['nodejs_compat'],
   resourcePersistencePath: state,
   durableObjects: { FORM_DB: { className: 'FormDatabase', useSQLite: true } },
-  bindings: { FORM_SEED_DEMO: '1', FORM_COOKIE_SECURE: '0' },
+  bindings: { FORM_SEED_DEMO: process.env.FORM_SEED_DEMO || '1', FORM_COOKIE_SECURE: '0', ...(process.env.TRAIN_SETUP_TOKEN ? { TRAIN_SETUP_TOKEN: process.env.TRAIN_SETUP_TOKEN } : {}) },
   serviceBindings: { ASSETS: async request => {
     if (!['GET', 'HEAD'].includes(request.method)) return new Response('Method not allowed', { status: 405 });
     let path;
@@ -25,7 +25,7 @@ const worker = new Miniflare(convertV4MiniflareOptions({
     return new Response(request.method === 'HEAD' ? null : await readFile(path), { headers: { 'Content-Type': mime[extname(path)] || 'application/octet-stream' } });
   } },
 }));
-console.log(`FORM Cloudflare preview: ${await worker.ready}`);
+console.log(`Train with me local app: ${await worker.ready}`);
 const stop = async () => { await worker.dispose(); process.exit(0); };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);

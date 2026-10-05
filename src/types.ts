@@ -8,5 +8,6 @@ export interface Session { id: string; clientId: string; date: string; time: str
 export interface WorkoutLog { id: string; clientId: string; planId: string; date: string; notes: string; items: {exerciseId: string; sets: number; reps: number; weight: number}[]; }
 export interface Measurement { id: string; clientId: string; date: string; weight: number; height: number; waist: number; hip: number; }
 export interface Assessment { id: string; clientId: string; date: string; name: string; result: number; unit: string; notes: string; }
-export interface Data { demoMode: boolean; user: User; users: User[]; exercises: Exercise[]; clients: Client[]; plans: Plan[]; sessions: Session[]; logs: WorkoutLog[]; measurements: Measurement[]; assessments: Assessment[]; }
+export interface ClientInvitation { id: string; name: string; email: string; coachId: string; expiresAt: number; status: 'Pending' | 'Joined' | 'Revoked' | 'Expired'; }
+export interface Data { demoMode: boolean; user: User; users: User[]; invitations: ClientInvitation[]; exercises: Exercise[]; clients: Client[]; plans: Plan[]; sessions: Session[]; logs: WorkoutLog[]; measurements: Measurement[]; assessments: Assessment[]; }
 export type Page = 'overview'|'clients'|'library'|'workouts'|'schedule'|'progress'|'equipment'|'accounts';

@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
-import { seedDatabase, passwordHash } from './seed.mjs';
+import { seedDatabase, seedExerciseLibrary, passwordHash } from './seed.mjs';
 
 const tables = ['clients', 'exercises', 'plans', 'training_sessions', 'logs', 'measurements', 'assessments'];
 const SESSION_DAYS = 7;
@@ -51,6 +51,11 @@ export function createApi({ app, db, seed = true, config = {} }) {
   ); CREATE TABLE IF NOT EXISTS auth_sessions (
     token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at INTEGER NOT NULL
   ); CREATE INDEX IF NOT EXISTS auth_sessions_expiry ON auth_sessions(expires_at);`);
+  db.exec(`CREATE TABLE IF NOT EXISTS client_invitations (
+    id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
+    email TEXT NOT NULL, goal TEXT NOT NULL, coach_id TEXT NOT NULL REFERENCES users(id),
+    created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, revoked_at INTEGER
+  );`);
   for (const table of tables) db.exec(`CREATE TABLE IF NOT EXISTS ${table} (id TEXT PRIMARY KEY, json TEXT NOT NULL CHECK(json_valid(json)));`);
   if (seed) seedDatabase(db);
   else if (!db.prepare('SELECT id FROM users LIMIT 1').get() && (config.FORM_ADMIN_EMAIL || config.FORM_ADMIN_PASSWORD)) {
@@ -96,7 +101,7 @@ export function createApi({ app, db, seed = true, config = {} }) {
     next();
   });
   app.get('/api/health', (req, res) => res.json({ ok: true }));
-  app.get('/api/config', (req, res) => res.json({ demoMode: seed }));
+  app.get('/api/config', (req, res) => res.json({ demoMode: seed, setupRequired: !seed && !!config.TRAIN_SETUP_TOKEN && !db.prepare('SELECT id FROM users LIMIT 1').get() }));
   const cookie = req => {
     const match = (req.headers.cookie || '').split(';').map(v => v.trim()).find(v => v.startsWith('form_session='));
     return match ? match.slice('form_session='.length) : '';
@@ -104,6 +109,63 @@ export function createApi({ app, db, seed = true, config = {} }) {
   const sessionCookie = (req, token, maxAge) => `form_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${req.secure || config.FORM_COOKIE_SECURE === '1' ? '; Secure' : ''}`;
   const loginAttempts = new Map();
   const dummyHash = passwordHash(randomBytes(24).toString('hex'));
+  const signIn = (req, res, account) => {
+    const now = Date.now();
+    db.prepare('DELETE FROM auth_sessions WHERE expires_at < ?').run(now);
+    const oldToken = cookie(req);
+    if (oldToken) db.prepare('DELETE FROM auth_sessions WHERE token_hash=?').run(sha(oldToken));
+    const token = randomBytes(32).toString('hex');
+    db.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES (?,?,?)').run(sha(token), account.id, now + SESSION_DAYS * 86_400_000);
+    res.set('Set-Cookie', sessionCookie(req, token, SESSION_DAYS * 86_400));
+    return { user: cleanUser(account) };
+  };
+  const validInvitation = token => {
+    if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) fail(404, 'This invitation is invalid or no longer available. Ask your coach for a new link.');
+    const invite = db.prepare('SELECT * FROM client_invitations WHERE token_hash=? AND expires_at>? AND used_at IS NULL AND revoked_at IS NULL').get(sha(token), Date.now());
+    if (!invite) fail(404, 'This invitation is invalid or no longer available. Ask your coach for a new link.');
+    return invite;
+  };
+  const requireSetup = token => {
+    if (seed || typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token) || !config.TRAIN_SETUP_TOKEN || sha(token) !== sha(config.TRAIN_SETUP_TOKEN)) fail(404, 'This workspace setup link is invalid.');
+    if (db.prepare('SELECT id FROM users LIMIT 1').get()) fail(409, 'This workspace is already set up. Please sign in.');
+  };
+  app.get('/api/auth/setup/:token', (req, res) => { requireSetup(req.params.token); res.json({ available: true }); });
+  app.post('/api/auth/setup', (req, res) => {
+    checkKeys(req.body, ['token', 'name', 'email', 'password']);
+    requireSetup(req.body.token);
+    const name = str(req.body.name, 'Full name', 120, true), email = emailValue(req.body.email);
+    const hashed = passwordHash(passwordValue(req.body.password));
+    const account = { id: `user-${randomUUID()}`, name, email, role: 'admin' };
+    const signedIn = db.transaction(() => {
+      requireSetup(req.body.token);
+      db.prepare('INSERT INTO users(id,name,email,role,client_id,password_hash) VALUES (?,?,?,?,?,?)').run(account.id, name, email, 'admin', null, hashed);
+      seedExerciseLibrary(db);
+      return signIn(req, res, account);
+    });
+    res.status(201).json(signedIn);
+  });
+  app.get('/api/auth/invitations/:token', (req, res) => {
+    const invite = validInvitation(req.params.token);
+    const coach = db.prepare('SELECT name FROM users WHERE id=?').get(invite.coach_id);
+    res.json({ name: invite.name, email: invite.email, goal: invite.goal, coachName: coach.name, expiresAt: invite.expires_at, demoMode: seed });
+  });
+  app.post('/api/auth/register', (req, res) => {
+    checkKeys(req.body, ['token', 'name', 'password', 'goal']);
+    const invite = validInvitation(req.body.token);
+    const name = str(req.body.name, 'Full name', 120, true);
+    const goal = str(req.body.goal ?? invite.goal, 'Training goal', 2000);
+    const hashed = passwordHash(passwordValue(req.body.password));
+    if (db.prepare('SELECT id FROM users WHERE email=?').get(invite.email)) fail(409, 'An account with this email already exists. Please sign in.');
+    const client = { id: `client-${randomUUID()}`, userId: `user-${randomUUID()}`, coachId: invite.coach_id, name, email: invite.email, goal, equipment: [], color: '#e7efbb', joinedAt: new Date().toISOString().slice(0, 10) };
+    const signedIn = db.transaction(() => {
+      validInvitation(req.body.token);
+      db.prepare('INSERT INTO users(id,name,email,role,client_id,password_hash) VALUES (?,?,?,?,?,?)').run(client.userId, name, invite.email, 'client', client.id, hashed);
+      save('clients', client);
+      db.prepare('UPDATE client_invitations SET used_at=? WHERE id=?').run(Date.now(), invite.id);
+      return signIn(req, res, { id: client.userId, name, email: invite.email, role: 'client', client_id: client.id });
+    });
+    res.status(201).json(signedIn);
+  });
   app.post('/api/auth/login', (req, res) => {
     const email = emailValue(req.body.email);
     const password = passwordValue(req.body.password, 'Password', 1);
@@ -119,13 +181,7 @@ export function createApi({ app, db, seed = true, config = {} }) {
       fail(401, 'Email or password is incorrect.');
     }
     loginAttempts.delete(attemptKey);
-    db.prepare('DELETE FROM auth_sessions WHERE expires_at < ?').run(now);
-    const oldToken = cookie(req);
-    if (oldToken) db.prepare('DELETE FROM auth_sessions WHERE token_hash=?').run(sha(oldToken));
-    const token = randomBytes(32).toString('hex');
-    db.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES (?,?,?)').run(sha(token), account.id, now + SESSION_DAYS * 86_400_000);
-    res.set('Set-Cookie', sessionCookie(req, token, SESSION_DAYS * 86_400));
-    res.json({ user: cleanUser(account) });
+    res.json(signIn(req, res, account));
   });
   app.post('/api/auth/logout', (req, res) => {
     const token = cookie(req);
@@ -206,7 +262,32 @@ export function createApi({ app, db, seed = true, config = {} }) {
     const userIds = new Set([req.user.id, ...clients.map(client => client.userId), ...clients.map(client => client.coachId)]);
     const users = db.prepare('SELECT * FROM users').all().filter(user => req.user.role === 'admin' || userIds.has(user.id)).map(cleanUser);
     const filtered = table => all(table).filter(entity => clientIds.has(entity.clientId));
-    res.json({ demoMode: seed, user: req.user, users, exercises: all('exercises'), clients, plans: filtered('plans'), sessions: filtered('training_sessions'), logs: filtered('logs'), measurements: filtered('measurements'), assessments: filtered('assessments') });
+    const invitations = req.user.role === 'client' ? [] : db.prepare('SELECT id,name,email,goal,coach_id,expires_at,used_at,revoked_at FROM client_invitations').all().filter(invite => req.user.role === 'admin' || invite.coach_id === req.user.id).map(invite => ({ id: invite.id, name: invite.name, email: invite.email, coachId: invite.coach_id, expiresAt: invite.expires_at, status: invite.used_at ? 'Joined' : invite.revoked_at ? 'Revoked' : invite.expires_at <= Date.now() ? 'Expired' : 'Pending' }));
+    res.json({ demoMode: seed, user: req.user, users, invitations, exercises: all('exercises'), clients, plans: filtered('plans'), sessions: filtered('training_sessions'), logs: filtered('logs'), measurements: filtered('measurements'), assessments: filtered('assessments') });
+  });
+
+  app.post('/api/invitations', (req, res) => {
+    trainer(req); checkKeys(req.body, ['name', 'email', 'goal', 'coachId']);
+    const name = str(req.body.name, 'Client name', 120, true), email = emailValue(req.body.email);
+    const goal = str(req.body.goal ?? '', 'Training goal', 2000);
+    const coachId = req.body.coachId ?? req.user.id;
+    if (req.user.role === 'coach' && coachId !== req.user.id) fail(403, 'You can only invite clients to your own workspace.');
+    checkCoach(coachId);
+    if (db.prepare('SELECT id FROM users WHERE email=?').get(email)) fail(409, 'An account with that email already exists.');
+    const token = randomBytes(32).toString('hex'), id = `invite-${randomUUID()}`, now = Date.now(), expiresAt = now + 7 * 86_400_000;
+    db.transaction(() => {
+      db.prepare('UPDATE client_invitations SET revoked_at=? WHERE email=? AND coach_id=? AND used_at IS NULL AND revoked_at IS NULL').run(now, email, coachId);
+      db.prepare('INSERT INTO client_invitations(id,token_hash,name,email,goal,coach_id,created_at,expires_at) VALUES (?,?,?,?,?,?,?,?)').run(id, sha(token), name, email, goal, coachId, now, expiresAt);
+    });
+    res.status(201).json({ id, token, expiresAt });
+  });
+  app.delete('/api/invitations/:id', (req, res) => {
+    trainer(req);
+    const invite = db.prepare('SELECT * FROM client_invitations WHERE id=?').get(req.params.id);
+    if (!invite) fail(404, 'Invitation was not found.');
+    if (req.user.role !== 'admin' && invite.coach_id !== req.user.id) fail(403, 'You do not have access to this invitation.');
+    db.prepare('UPDATE client_invitations SET revoked_at=? WHERE id=? AND used_at IS NULL').run(Date.now(), invite.id);
+    res.json({ ok: true });
   });
 
   const exerciseKeys = ['name', 'category', 'muscles', 'equipment', 'difficulty', 'instructions', 'cues', 'videoUrl', 'alternatives', 'archived'];

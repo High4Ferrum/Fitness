@@ -11,6 +11,17 @@ async function navigate(page,name){
 }
 const today=()=>new Date().toISOString().slice(0,10);
 
+test('mobile users can see Sign out and switch all demo roles', async ({ page }) => {
+ await page.setViewportSize({ width: 390, height: 844 });
+ for (const role of ['admin', 'client', 'coach']) {
+  await demo(page, role);
+  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+ }
+});
+
 test('admin curates an exercise and creates a coach account',async({page})=>{
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
  await demo(page,'admin');

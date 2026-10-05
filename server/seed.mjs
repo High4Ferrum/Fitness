@@ -19,28 +19,6 @@ export function seedDatabase(db) {
     return date.toISOString().slice(0, 10);
   };
   const add = (table, value) => db.prepare(`INSERT INTO ${table} (id,json) VALUES (?,?)`).run(value.id, JSON.stringify(value));
-  const video = (name) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${name} proper form exercise demonstration`)}`;
-  const definitions = [
-    ['bench', 'Barbell bench press', 'Strength', 'Chest · Triceps', ['Barbell', 'Bench'], 'Intermediate', 'Lie on a bench with feet planted. Grip the bar slightly wider than shoulder width. Lower with control to the mid-chest, then press upward.', 'Keep wrists above elbows and shoulder blades set.', ['db-bench', 'pushup']],
-    ['db-bench', 'Dumbbell bench press', 'Strength', 'Chest · Triceps', ['Dumbbells', 'Bench'], 'Beginner', 'Lie on the bench with a dumbbell in each hand. Lower until your upper arms are near parallel to the floor, then press upward.', 'Use a comfortable range and keep both hands moving together.', ['floor-press', 'pushup']],
-    ['floor-press', 'Dumbbell floor press', 'Strength', 'Chest · Triceps', ['Dumbbells'], 'Beginner', 'Lie on the floor with knees bent. Lower the weights until your upper arms gently meet the floor, then press up.', 'Pause briefly on the floor without relaxing your shoulders.', ['pushup']],
-    ['pushup', 'Push-up', 'Strength', 'Chest · Core', [], 'Beginner', 'Start in a high plank. Bend your elbows to lower your chest, then push the floor away to return.', 'Keep your body in one line. Use an elevated surface if needed.', ['incline-pushup']],
-    ['incline-pushup', 'Incline push-up', 'Strength', 'Chest · Triceps', ['Bench'], 'Beginner', 'Place your hands on a stable bench. Walk your feet back and perform a controlled push-up.', 'Choose a higher surface to reduce difficulty.', ['pushup']],
-    ['squat', 'Bodyweight squat', 'Strength', 'Quads · Glutes', [], 'Beginner', 'Stand with feet around shoulder width. Sit down between your hips, then stand tall.', 'Keep heels grounded and knees aligned with your toes.', ['goblet-squat']],
-    ['goblet-squat', 'Goblet squat', 'Strength', 'Quads · Glutes', ['Dumbbells'], 'Beginner', 'Hold one dumbbell close to your chest. Squat through a comfortable range and stand.', 'Brace your trunk and keep the weight close.', ['squat']],
-    ['deadlift', 'Romanian deadlift', 'Strength', 'Hamstrings · Glutes', ['Dumbbells'], 'Intermediate', 'Hold dumbbells in front of your thighs. Push your hips back with soft knees, then stand by extending your hips.', 'Keep the weights close and your back steady.', ['bridge']],
-    ['row', 'Dumbbell bent-over row', 'Strength', 'Back · Biceps', ['Dumbbells'], 'Beginner', 'Hinge at the hips with knees slightly bent. Pull both dumbbells toward your ribs, then lower slowly.', 'Keep your torso still and shoulders away from your ears.', ['band-row']],
-    ['band-row', 'Resistance band row', 'Strength', 'Back · Biceps', ['Resistance bands'], 'Beginner', 'Anchor a band securely at chest height. Pull your elbows back toward your ribs, then return with control.', 'Check the anchor before each set.', ['row']],
-    ['shoulder-press', 'Dumbbell shoulder press', 'Strength', 'Shoulders · Triceps', ['Dumbbells'], 'Intermediate', 'Start with dumbbells at shoulder height. Press overhead through a comfortable range and lower.', 'Avoid arching your lower back.', ['lateral-raise']],
-    ['lateral-raise', 'Dumbbell lateral raise', 'Strength', 'Shoulders', ['Dumbbells'], 'Beginner', 'Raise light dumbbells out to the sides with elbows slightly bent. Lower slowly.', 'Stop near shoulder height and avoid swinging.', ['shoulder-press']],
-    ['lunge', 'Reverse lunge', 'Strength', 'Quads · Glutes', [], 'Beginner', 'Step one foot backward and lower into a split stance. Push through your front foot to stand.', 'Use a stable support for balance if needed.', ['squat']],
-    ['bridge', 'Glute bridge', 'Strength', 'Glutes · Hamstrings', [], 'Beginner', 'Lie on your back with knees bent and feet flat. Lift your hips, pause, and lower.', 'Finish by squeezing your glutes without arching your back.', ['deadlift']],
-    ['plank', 'Forearm plank', 'Core', 'Core · Shoulders', [], 'Beginner', 'Support yourself on your forearms and toes. Hold a straight body position while breathing normally.', 'Record hold duration in the workout notes.', ['dead-bug']],
-    ['dead-bug', 'Dead bug', 'Core', 'Core', [], 'Beginner', 'Lie on your back with arms up and knees bent. Slowly extend the opposite arm and leg, then alternate.', 'Keep your lower back gently against the floor.', ['plank']],
-    ['bike', 'Stationary bike', 'Cardio', 'Legs · Cardiovascular', ['Stationary bike'], 'Beginner', 'Adjust the seat for a slight bend in your knee at the bottom of each pedal stroke. Pedal at your prescribed intensity.', 'Record duration and effort in the workout notes.', ['walk']],
-    ['walk', 'Brisk walk', 'Cardio', 'Legs · Cardiovascular', [], 'Beginner', 'Walk at a comfortable brisk pace on a safe, even route.', 'Use a pace that matches the coach’s prescribed effort.', ['bike']],
-    ['hip-flexor', 'Half-kneeling hip flexor stretch', 'Mobility', 'Hip flexors', [], 'Beginner', 'Kneel with one foot forward. Gently tuck your pelvis and shift forward until you feel a comfortable stretch.', 'Avoid forcing the stretch or arching your back.', []],
-  ];
   db.transaction(() => {
     user.run('user-admin', 'Alex Morgan', 'admin@form.fit', 'admin', null, hash);
     user.run('user-coach', 'Alex Morgan', 'coach@form.fit', 'coach', null, hash);
@@ -54,9 +32,7 @@ export function seedDatabase(db) {
       user.run(`user-${key}`, name, email, 'client', `client-${key}`, hash);
       add('clients', { id: `client-${key}`, userId: `user-${key}`, coachId: 'user-coach', name, email, goal, equipment, color, joinedAt: day(-56) });
     }
-    for (const [key, name, category, muscles, equipment, difficulty, instructions, cues, alternatives] of definitions) {
-      add('exercises', { id: `ex-${key}`, name, category, muscles, equipment, difficulty, instructions, cues, videoUrl: video(name), alternatives: alternatives.map(a => `ex-${a}`), archived: false });
-    }
+    seedExerciseLibrary(db);
     const item = (key, sets, reps, weight = 0, rest = 60, notes = '') => ({ exerciseId: `ex-${key}`, sets, reps, weight, rest, notes });
     const plans = [
       { id: 'plan-jamie-upper', clientId: 'client-jamie', name: 'Upper body strength', date: day(0), items: [item('bench', 3, 8, 65, 90), item('row', 3, 10, 25), item('shoulder-press', 3, 10, 15), item('dead-bug', 3, 10)], notes: 'A steady pace today. Leave 1–2 good reps in reserve.' },
@@ -92,4 +68,34 @@ export function seedDatabase(db) {
       ['maya', 4, '11:30', 'In person', 'Studio · Strength floor'],
     ].forEach(([key, offset, time, type, location], index) => add('training_sessions', { id: `session-${index}`, clientId: `client-${key}`, date: day(offset), time, duration: 60, type, location, notes: type === 'Online' ? 'Coach will share the meeting link before the session.' : 'Bring water and arrive a few minutes early.' }));
   });
+}
+
+export function seedExerciseLibrary(db) {
+  const video = (name) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${name} proper form exercise demonstration`)}`;
+  const definitions = [
+    ['bench', 'Barbell bench press', 'Strength', 'Chest · Triceps', ['Barbell', 'Bench'], 'Intermediate', 'Lie on a bench with feet planted. Grip the bar slightly wider than shoulder width. Lower with control to the mid-chest, then press upward.', 'Keep wrists above elbows and shoulder blades set.', ['db-bench', 'pushup']],
+    ['db-bench', 'Dumbbell bench press', 'Strength', 'Chest · Triceps', ['Dumbbells', 'Bench'], 'Beginner', 'Lie on the bench with a dumbbell in each hand. Lower until your upper arms are near parallel to the floor, then press upward.', 'Use a comfortable range and keep both hands moving together.', ['floor-press', 'pushup']],
+    ['floor-press', 'Dumbbell floor press', 'Strength', 'Chest · Triceps', ['Dumbbells'], 'Beginner', 'Lie on the floor with knees bent. Lower the weights until your upper arms gently meet the floor, then press up.', 'Pause briefly on the floor without relaxing your shoulders.', ['pushup']],
+    ['pushup', 'Push-up', 'Strength', 'Chest · Core', [], 'Beginner', 'Start in a high plank. Bend your elbows to lower your chest, then push the floor away to return.', 'Keep your body in one line. Use an elevated surface if needed.', ['incline-pushup']],
+    ['incline-pushup', 'Incline push-up', 'Strength', 'Chest · Triceps', ['Bench'], 'Beginner', 'Place your hands on a stable bench. Walk your feet back and perform a controlled push-up.', 'Choose a higher surface to reduce difficulty.', ['pushup']],
+    ['squat', 'Bodyweight squat', 'Strength', 'Quads · Glutes', [], 'Beginner', 'Stand with feet around shoulder width. Sit down between your hips, then stand tall.', 'Keep heels grounded and knees aligned with your toes.', ['goblet-squat']],
+    ['goblet-squat', 'Goblet squat', 'Strength', 'Quads · Glutes', ['Dumbbells'], 'Beginner', 'Hold one dumbbell close to your chest. Squat through a comfortable range and stand.', 'Brace your trunk and keep the weight close.', ['squat']],
+    ['deadlift', 'Romanian deadlift', 'Strength', 'Hamstrings · Glutes', ['Dumbbells'], 'Intermediate', 'Hold dumbbells in front of your thighs. Push your hips back with soft knees, then stand by extending your hips.', 'Keep the weights close and your back steady.', ['bridge']],
+    ['row', 'Dumbbell bent-over row', 'Strength', 'Back · Biceps', ['Dumbbells'], 'Beginner', 'Hinge at the hips with knees slightly bent. Pull both dumbbells toward your ribs, then lower slowly.', 'Keep your torso still and shoulders away from your ears.', ['band-row']],
+    ['band-row', 'Resistance band row', 'Strength', 'Back · Biceps', ['Resistance bands'], 'Beginner', 'Anchor a band securely at chest height. Pull your elbows back toward your ribs, then return with control.', 'Check the anchor before each set.', ['row']],
+    ['shoulder-press', 'Dumbbell shoulder press', 'Strength', 'Shoulders · Triceps', ['Dumbbells'], 'Intermediate', 'Start with dumbbells at shoulder height. Press overhead through a comfortable range and lower.', 'Avoid arching your lower back.', ['lateral-raise']],
+    ['lateral-raise', 'Dumbbell lateral raise', 'Strength', 'Shoulders', ['Dumbbells'], 'Beginner', 'Raise light dumbbells out to the sides with elbows slightly bent. Lower slowly.', 'Stop near shoulder height and avoid swinging.', ['shoulder-press']],
+    ['lunge', 'Reverse lunge', 'Strength', 'Quads · Glutes', [], 'Beginner', 'Step one foot backward and lower into a split stance. Push through your front foot to stand.', 'Use a stable support for balance if needed.', ['squat']],
+    ['bridge', 'Glute bridge', 'Strength', 'Glutes · Hamstrings', [], 'Beginner', 'Lie on your back with knees bent and feet flat. Lift your hips, pause, and lower.', 'Finish by squeezing your glutes without arching your back.', ['deadlift']],
+    ['plank', 'Forearm plank', 'Core', 'Core · Shoulders', [], 'Beginner', 'Support yourself on your forearms and toes. Hold a straight body position while breathing normally.', 'Record hold duration in the workout notes.', ['dead-bug']],
+    ['dead-bug', 'Dead bug', 'Core', 'Core', [], 'Beginner', 'Lie on your back with arms up and knees bent. Slowly extend the opposite arm and leg, then alternate.', 'Keep your lower back gently against the floor.', ['plank']],
+    ['bike', 'Stationary bike', 'Cardio', 'Legs · Cardiovascular', ['Stationary bike'], 'Beginner', 'Adjust the seat for a slight bend in your knee at the bottom of each pedal stroke. Pedal at your prescribed intensity.', 'Record duration and effort in the workout notes.', ['walk']],
+    ['walk', 'Brisk walk', 'Cardio', 'Legs · Cardiovascular', [], 'Beginner', 'Walk at a comfortable brisk pace on a safe, even route.', 'Use a pace that matches the coach’s prescribed effort.', ['bike']],
+    ['hip-flexor', 'Half-kneeling hip flexor stretch', 'Mobility', 'Hip flexors', [], 'Beginner', 'Kneel with one foot forward. Gently tuck your pelvis and shift forward until you feel a comfortable stretch.', 'Avoid forcing the stretch or arching your back.', []],
+  ];
+  const insert = db.prepare('INSERT OR IGNORE INTO exercises(id,json) VALUES (?,?)');
+  for (const [key, name, category, muscles, equipment, difficulty, instructions, cues, alternatives] of definitions) {
+    const exercise = { id: `ex-${key}`, name, category, muscles, equipment, difficulty, instructions, cues, videoUrl: video(name), alternatives: alternatives.map(a => `ex-${a}`), archived: false };
+    insert.run(exercise.id, JSON.stringify(exercise));
+  }
 }

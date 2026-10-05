@@ -22,10 +22,18 @@ async function api(path, { method = 'GET', json, form, token = credential } = {}
   if (!response.ok || !payload.success) throw new Error(`Cloudflare ${response.status}: ${payload.errors?.map(error => error.message).join('; ') || 'Request failed'}`);
   return payload.result;
 }
-const name = 'form-fitness-preview';
+const production = process.argv.includes('--production');
+const name = production ? 'train-with-me' : 'form-fitness-preview';
+const secrets = production && process.env.FORM_PRODUCTION_SECRET_FILE ? JSON.parse(await readFile(process.env.FORM_PRODUCTION_SECRET_FILE, 'utf8')) : {};
+if (Object.keys(secrets).some(key => key !== 'TRAIN_SETUP_TOKEN') || (secrets.TRAIN_SETUP_TOKEN && !/^[a-f0-9]{64}$/.test(secrets.TRAIN_SETUP_TOKEN))) throw new Error('Invalid production setup secret.');
 const scripts = await api('/workers/scripts');
 const previous = scripts.find(script => script.id === name);
+if (production && !previous && !secrets.TRAIN_SETUP_TOKEN) throw new Error('Supply FORM_PRODUCTION_SECRET_FILE with a random 64-character hexadecimal TRAIN_SETUP_TOKEN for the first production deployment.');
 if (previous?.migration_tag && previous.migration_tag !== 'v1') throw new Error('Unexpected database migration tag. Review before deployment.');
+if (production && previous) {
+  const settings = await api(`/workers/scripts/${name}/settings`);
+  if (!settings.bindings.some(binding => binding.name === 'FORM_DB' && binding.class_name === 'FormDatabase')) throw new Error('An unrelated Worker uses this name. Choose a different app name before deploying.');
+}
 const subdomain = (await api('/workers/subdomain')).subdomain;
 const dist = resolve('dist');
 const manifest = {}, files = new Map();
@@ -60,11 +68,13 @@ const metadata = {
   bindings: [
     { name: 'ASSETS', type: 'assets' },
     { name: 'FORM_DB', type: 'durable_object_namespace', class_name: 'FormDatabase' },
-    { name: 'FORM_SEED_DEMO', type: 'plain_text', text: '1' },
+    { name: 'FORM_SEED_DEMO', type: 'plain_text', text: production ? '0' : '1' },
     { name: 'FORM_COOKIE_SECURE', type: 'plain_text', text: '1' },
+    ...Object.entries(secrets).map(([name, text]) => ({ name, type: 'secret_text', text })),
   ],
   assets: { jwt: completion, config: { not_found_handling: 'single-page-application', run_worker_first: true } },
   observability: { enabled: true },
+  keep_bindings: ['secret_text'],
   ...(!previous?.migration_tag ? { migrations: { new_tag: 'v1', steps: [{ new_sqlite_classes: ['FormDatabase'] }] } } : {}),
 };
 const form = new FormData();
