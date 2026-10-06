@@ -36,6 +36,8 @@ weekly_assignments stores clientId, lineupId, lineupName, notes, startDate, week
 
 ## Expanded exercise catalog
 
+The daily workout builder searches exercise names, muscle groups, categories and equipment, including Bodyweight for equipment-free movements. Search is case-insensitive and ignores leading/trailing spaces. The search placeholder states these fields.
+
 The shared starter library has 48 exercises: 19 original, 20 verified ISSA selections, and 9 distinct additions from NASM/ACE (chin-up, Bulgarian split squat, seated leg curl, leg press calf raise, cable face pull, dumbbell front raise, bird dog, side plank, resistance band Pallof press). Definitions and primary source links are in server/exercise-additions.mjs; instructions and cues are original app text. No course media is copied. Staff see Coach references in exercise details; clients use the app instructions and existing YouTube demonstration search.
 
 createApi runs additive catalog seeding at startup for both new and existing databases. Match by stable ID or normalized name, retain all existing JSON including edits and archives, resolve alternatives to custom matching entries, and filter missing/archived alternatives for new entries. No database migration or data reset is needed. Exercise references survive edits and must use HTTPS links without embedded credentials.

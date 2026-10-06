@@ -24,6 +24,19 @@ test('coach finds new exercises, opens references, and saves them in a daily rou
  await page.locator('.page-heading').getByRole('button', { name: 'Build a workout', exact: true }).click();
  const dialog = page.getByRole('dialog'), name = `ISSA and NASM routine ${Date.now()}`;
  await dialog.getByLabel('Workout name').fill(name);
+ const search = dialog.getByRole('textbox', { name: 'Search exercises to add', exact: true });
+ await search.fill('  cHeSt  ');
+ await expect(dialog.locator('.workout-library-option')).toHaveCount(9);
+ for (const exercise of ['Barbell bench press', 'Dumbbell bench press', 'Dumbbell floor press', 'Push-up', 'Incline push-up', 'Incline dumbbell bench press', 'Cable crossover', 'Flat bench dumbbell fly', 'Seated chest press']) {
+  await expect(dialog.locator('.workout-library-option strong').filter({ hasText: new RegExp(`^${exercise}$`) })).toBeVisible();
+ }
+ await expect(dialog.getByRole('button', { name: /Bird dog Bodyweight/ })).toHaveCount(0);
+ await search.fill('Rope attachment');
+ await expect(dialog.locator('.workout-library-option')).toHaveCount(2);
+ await expect(dialog.getByRole('button', { name: /Cable face pull/ })).toBeVisible();
+ await expect(dialog.getByRole('button', { name: /Rope triceps press-down/ })).toBeVisible();
+ await search.fill('bodyweight');
+ await expect(dialog.getByRole('button', { name: 'Bird dog Bodyweight', exact: true })).toBeVisible();
  for (const exercise of ['Incline dumbbell bench press', 'Cable face pull', 'Bird dog']) {
   await dialog.getByRole('textbox', { name: 'Search exercises to add', exact: true }).fill(exercise);
   await dialog.getByRole('button', { name: new RegExp(exercise) }).click();
