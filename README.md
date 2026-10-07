@@ -10,7 +10,7 @@ Choose Admin, Coach, or Client on the sign-in screen to explore the sample works
 
 ## Start your coaching workspace
 
-Use the private activation guide provided with the deployment to create your own administrator account. Choose your name, email and password. The link works only until the first account is created. The real workspace starts with 48 library exercises and no demo accounts, clients, workouts or measurements. The demo uses a separate database.
+Use the private activation guide provided with the deployment to create your own administrator account. Choose your name, email and password. The link works only until the first account is created. The real workspace starts with 353 library exercises and no demo accounts, clients, workouts or measurements. The demo uses a separate database.
 
 You can coach clients directly as the administrator, or add coach accounts under **Manage coaches**.
 
@@ -35,6 +35,8 @@ Open **Daily routines → Copy to client**, choose the client and date, then cop
 ## Three levels of workout planning
 
 The exercise catalog includes 19 original movements plus 20 ISSA selections and 9 additional selections from the earlier NASM/ACE research, with overlaps included once. New entries include equipment, target muscles, difficulty, original instructions, coaching cues, alternatives and coach reference links. ISSA reference links open the trainer portal and may require sign-in. Third-party videos, photos and course text are not copied into the app; the YouTube control searches for demonstrations. Administrators can replace that search link with a selected video.
+
+The supplied `train_with_me_starter_exercise_database.xlsx` adds 305 distinct movements for a total of 353. All 350 spreadsheet rows and their original metadata are retained in `server/starter-exercises.mjs`; `server/starter-exercise-definitions.mjs` maps them to the existing app format and resolves equivalent names. Existing entries keep their IDs, instructions, edits and archive status. Spreadsheet-only entries have no supplied coaching instructions or video URLs; instructions remain blank and demonstration links use the existing YouTube search. Administrators can add coaching text and selected videos. Equipment labels are normalized, with bench/rack requirements added for relevant movements. Spreadsheet metadata beyond the current app fields is retained in the source module for future use.
 
 Catalog upgrades add missing exercises to existing workspaces when the API starts. Existing edits, archived exercises, custom movements and assigned workouts remain intact. A custom exercise with the same name (ignoring case, extra spaces and hyphens) is reused instead of adding a duplicate.
 
