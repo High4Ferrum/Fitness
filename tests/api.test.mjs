@@ -475,7 +475,7 @@ test('a private workspace can be activated only once with its setup secret and h
   assert.equal(data.users.length, 1);
   assert.equal(data.clients.length, 0);
   assert.equal(data.plans.length, 0);
-  assert.equal(data.exercises.length, 48);
+  assert.equal(data.exercises.length, 353);
   assert.equal(status(await f.request('/config'), 200).setupRequired, false);
   status(await f.request(`/auth/setup/${token}`), 409);
   status(await f.request('/auth/setup', { method: 'POST', body: { ...payload, email: 'imposter@example.com' } }), 409);
@@ -702,3 +702,4 @@ test('weekly lineups enforce coach ownership and client permissions at every end
   assert.equal((await f.bootstrap(f.coach.cookie)).weeklyAssignments.length, 0);
   assert.equal((await f.bootstrap(admin.cookie)).weeklyLineups.length, 1);
 });
+

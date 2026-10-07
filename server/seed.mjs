@@ -1,5 +1,6 @@
 import { randomBytes, scryptSync } from 'node:crypto';
 import { exerciseAdditions } from './exercise-additions.mjs';
+import { starterExerciseDefinitions } from './starter-exercise-definitions.mjs';
 
 export function passwordHash(password) {
   const salt = randomBytes(16).toString('hex');
@@ -99,7 +100,7 @@ export function seedExerciseLibrary(db) {
   const normalize = name => name.trim().toLowerCase().replace(/[\s-]+/g, ' ');
   const byName = new Map(existing.map(exercise => [normalize(exercise.name), exercise]));
   const canonicalIds = new Map(), pending = [];
-  for (const [key, name, category, muscles, equipment, difficulty, instructions, cues, alternatives, references] of [...definitions, ...exerciseAdditions]) {
+  for (const [key, name, category, muscles, equipment, difficulty, instructions, cues, alternatives, references] of [...definitions, ...exerciseAdditions, ...starterExerciseDefinitions]) {
     const id = `ex-${key}`, current = byId.get(id) || byName.get(normalize(name));
     if (current) { canonicalIds.set(id, current.id); continue; }
     const exercise = { id, name, category, muscles, equipment, difficulty, instructions, cues, videoUrl: video(name), alternatives: alternatives.map(a => `ex-${a}`), archived: false, ...(references ? { references } : {}) };
