@@ -25,14 +25,16 @@ test('coach finds new exercises, opens references, and saves them in a daily rou
  const dialog = page.getByRole('dialog'), name = `ISSA and NASM routine ${Date.now()}`;
  await dialog.getByLabel('Workout name').fill(name);
  const search = dialog.getByRole('textbox', { name: 'Search exercises to add', exact: true });
+ const catalog = (await (await page.request.get('/api/bootstrap')).json()).exercises.filter(exercise => !exercise.archived);
+ const matches = query => catalog.filter(exercise => [exercise.name, exercise.muscles, exercise.category, ...(exercise.equipment.length ? exercise.equipment : ['Bodyweight'])].join(' ').toLowerCase().includes(query.trim().toLowerCase())).map(exercise => exercise.name);
  await search.fill('  cHeSt  ');
- await expect(dialog.locator('.workout-library-option')).toHaveCount(9);
+ await expect(dialog.locator('.workout-library-option strong')).toHaveText(matches('  cHeSt  '));
  for (const exercise of ['Barbell bench press', 'Dumbbell bench press', 'Dumbbell floor press', 'Push-up', 'Incline push-up', 'Incline dumbbell bench press', 'Cable crossover', 'Flat bench dumbbell fly', 'Seated chest press']) {
   await expect(dialog.locator('.workout-library-option strong').filter({ hasText: new RegExp(`^${exercise}$`) })).toBeVisible();
  }
  await expect(dialog.getByRole('button', { name: /Bird dog Bodyweight/ })).toHaveCount(0);
  await search.fill('Rope attachment');
- await expect(dialog.locator('.workout-library-option')).toHaveCount(2);
+ await expect(dialog.locator('.workout-library-option strong')).toHaveText(matches('Rope attachment'));
  await expect(dialog.getByRole('button', { name: /Cable face pull/ })).toBeVisible();
  await expect(dialog.getByRole('button', { name: /Rope triceps press-down/ })).toBeVisible();
  await search.fill('bodyweight');
