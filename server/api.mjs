@@ -1,3 +1,4 @@
+import { installYoga } from './yoga-api.mjs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { seedDatabase, seedExerciseLibrary, passwordHash } from './seed.mjs';
 
@@ -267,7 +268,7 @@ export function createApi({ app, db, seed = true, config = {} }) {
     const invitations = req.user.role === 'client' ? [] : db.prepare('SELECT id,name,email,goal,coach_id,expires_at,used_at,revoked_at FROM client_invitations').all().filter(invite => req.user.role === 'admin' || invite.coach_id === req.user.id).map(invite => ({ id: invite.id, name: invite.name, email: invite.email, coachId: invite.coach_id, expiresAt: invite.expires_at, status: invite.used_at ? 'Joined' : invite.revoked_at ? 'Revoked' : invite.expires_at <= Date.now() ? 'Expired' : 'Pending' }));
     const templates = req.user.role === 'client' ? [] : all('workout_templates').filter(template => req.user.role === 'admin' || template.ownerId === req.user.id);
     const weeklyLineups = req.user.role === 'client' ? [] : all('weekly_lineups').filter(lineup => req.user.role === 'admin' || lineup.ownerId === req.user.id);
-    res.json({ demoMode: seed, user: req.user, users, invitations, templates, weeklyLineups, weeklyAssignments: filtered('weekly_assignments'), exercises: all('exercises'), clients, plans: filtered('plans'), sessions: filtered('training_sessions'), logs: filtered('logs'), measurements: filtered('measurements'), assessments: filtered('assessments') });
+    res.json({ demoMode: seed, user: req.user, users, invitations, templates, weeklyLineups, weeklyAssignments: filtered('weekly_assignments'), exercises: all('exercises').filter(exercise => req.user.role !== 'client' || filtered('plans').some(plan => plan.items.some(item => item.exerciseId === exercise.id))), clients, plans: filtered('plans'), sessions: filtered('training_sessions'), logs: filtered('logs'), measurements: filtered('measurements'), assessments: filtered('assessments') });
   });
 
   app.post('/api/invitations', (req, res) => {
@@ -584,6 +585,9 @@ export function createApi({ app, db, seed = true, config = {} }) {
     } else if (assessment.unit === '%') num(assessment.result, 'Percentage', 0, 100);
     res.status(201).json(save('assessments', assessment));
   });
+  installYoga({ app, db, trainer, clientFor, fail, str, num, stringList, checkKeys });
+  app.get('/api/exercises', (req, res) => { trainer(req); res.json(all('exercises')); });
+  app.get('/api/exercises/:id', (req, res) => { const exercise = requiredEntity('exercises', req.params.id); if (req.user.role === 'client' && !all('plans').some(plan => plan.clientId === req.user.clientId && plan.items.some(item => item.exerciseId === exercise.id))) fail(403, 'This exercise is not in your assigned workouts.'); res.json(exercise); });
   app.use('/api', (req, res) => res.status(404).json({ error: 'API route was not found.' }));
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);

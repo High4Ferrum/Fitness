@@ -14,4 +14,4 @@ export interface Measurement { id: string; clientId: string; date: string; weigh
 export interface Assessment { id: string; clientId: string; date: string; name: string; result: number; unit: string; notes: string; }
 export interface ClientInvitation { id: string; name: string; email: string; coachId: string; expiresAt: number; status: 'Pending' | 'Joined' | 'Revoked' | 'Expired'; }
 export interface Data { demoMode: boolean; user: User; users: User[]; invitations: ClientInvitation[]; templates: WorkoutTemplate[]; weeklyLineups: WeeklyLineup[]; weeklyAssignments: WeeklyAssignment[]; exercises: Exercise[]; clients: Client[]; plans: Plan[]; sessions: Session[]; logs: WorkoutLog[]; measurements: Measurement[]; assessments: Assessment[]; }
-export type Page = 'overview'|'clients'|'library'|'workouts'|'schedule'|'progress'|'equipment'|'accounts';
+export type Page = 'overview'|'clients'|'library'|'yoga'|'workouts'|'schedule'|'progress'|'equipment'|'accounts';

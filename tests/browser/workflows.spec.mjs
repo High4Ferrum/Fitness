@@ -173,7 +173,8 @@ test('coach records baseline assessments and changes password',async({page})=>{
 
 test('mobile navigation and every client page fit the viewport',async({page})=>{
  await page.setViewportSize({width:390,height:844});await demo(page,'client');
- for(const name of ['Overview','Workout plans','Schedule','Exercise library','Progress & assessments','Equipment']){
+ await expect(page.getByRole('navigation').getByRole('button',{name:'Exercise library',exact:true})).toHaveCount(0);
+ for(const name of ['Overview','Workout plans','Schedule','My yoga','Progress & assessments','Equipment']){
   await navigate(page,name);await expect(page.getByRole('button',{name:'Open menu'})).toBeVisible();
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }

@@ -150,3 +150,9 @@ To verify an already deployed demo preview, set `FORM_E2E_BASE_URL` and run `npx
 - `.github/workflows/ci.yml`: build and isolated API/browser validation.
 
 Billing, email invitations, forgotten-password email delivery, reminders, and video-meeting creation are outside this version.
+
+## Yoga classes
+
+Coaches and administrators can open **Yoga → Flow Builder**, **Pose Library**, and **Reusable Blocks**. The additive upgrade includes 126 poses, 12 complete 25–55-minute draft classes and seven sequence blocks. Duplicate a starter, customize sections and steps, preview, publish and assign it to a client. Clients see only assigned published copies under **My yoga**, with a timed player and completion history. The Exercise Library is hidden from clients; assigned exercise demonstrations remain available.
+
+See [Yoga implementation and migration guide](docs/yoga-enhancement.md) for components, APIs, timing rules, sources, rollback and review steps.
