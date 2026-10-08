@@ -92,4 +92,18 @@ Coach review: verify suitability and transition pacing, edit drafts, optionally 
 
 Two existing browser tests initially timed out while multiple runtime/browser suites ran concurrently; both passed independently, and the final full Cloudflare browser run passed with suites run serially. Local test servers in this managed sandbox require the network capability; otherwise Node's runtime asserts while opening test sockets. Neither issue required changing application authentication or workout behavior.
 
-Changes are committed on repository branch `feature/yoga-flow-builder`. No production deployment or live-database mutation was performed. Review and deploy using the repository's existing process, then review starter drafts and add licensed media as desired.
+Changes are committed on repository branch `feature/yoga-flow-builder`. The initial feature delivery was not deployed. The owner subsequently authorized production deployment; see the deployment record below. Review starter drafts and add licensed media as desired.
+
+
+## Authorized production deployment — 2026-10-08
+
+Deployed the tested application from `e68a133` to https://train-with-me.highferrum.workers.dev using the connected Cloudflare account and documented direct asset/module upload APIs. Wrangler was not authenticated in the execution environment.
+
+- Active version: `0f5c6e7c-5c60-4e14-8d44-476b3bc544d8`, 100% traffic.
+- Deployment: `68d9c826-a798-4b32-83e9-f1768d702213`.
+- Previous version retained for rollback: `cd6d0148-ce43-4a1c-a679-2e7e90ca1efa`.
+- Existing `FormDatabase` namespace `62cb0723d84d4ca38888f4e070eb82a2`, Durable Object migration tag `v1`, production seeding flag, secure cookies and setup secret binding were retained. No new account or trainee records were created for deployment checks.
+- Live HTML, JavaScript and CSS match the built artifacts exactly. Root, API health and production configuration return 200. Bootstrap and all tested yoga endpoints return 401 without sign-in.
+- Production remains in non-demo mode. Starter classes are drafts and require coach review before publication/assignment.
+
+Sign in with an existing coach or administrator account and open **Yoga → Flow Builder**. Reload the browser if it still has the previous app open.
