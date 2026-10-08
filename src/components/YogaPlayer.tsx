@@ -7,7 +7,7 @@ export default function YogaPlayer({flow,poses,onClose,onComplete}:{flow:YogaFlo
  const [index,setIndex]=useState(0),[elapsed,setElapsed]=useState(0),[playing,setPlaying]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const clock=useRef({start:0,elapsed:0});
  const item=items[index],total=item?.phases.reduce((s,p)=>s+p.seconds,0)??0;
- useEffect(()=>{if(!playing)return;clock.current={start:Date.now(),elapsed};const timer=setInterval(()=>{const next=clock.current.elapsed+Math.floor((Date.now()-clock.current.start)/1000);setElapsed(Math.min(next,total));if(next>=total)setPlaying(false);},200);return()=>clearInterval(timer);},[playing,index,total]);
+ useEffect(()=>{if(!playing)return;clock.current={start:Date.now(),elapsed};const timer=setInterval(()=>{const next=clock.current.elapsed+Math.floor((Date.now()-clock.current.start)/1000);setElapsed(Math.min(next,total));if(next>=total){if(index<items.length-1){setElapsed(0);setIndex(index+1);}else setPlaying(false);}},200);return()=>clearInterval(timer);},[playing,index,total]);
  function go(next:number){setPlaying(false);setElapsed(0);setIndex(next);}
  async function complete(){if(!onComplete)return;setBusy(true);try{await onComplete();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  if(!item)return <div className="panel empty-state"><h2>No poses yet</h2><p>Add poses to preview your class.</p><button className="button secondary" onClick={onClose}>Back to builder</button></div>;

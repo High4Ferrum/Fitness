@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { migrateYoga } from './migrations/yoga-v1.mjs';
 import { yogaPoses, yogaStarterFlows, yogaBlocks } from './yoga-seed.mjs';
 import { flowSeconds } from '../shared/yoga-timing.mjs';
-export function installYoga({app,db,trainer,clientFor,fail,str,num,stringList,checkKeys}) {
- db.transaction(() => migrateYoga(db));
+export function installYoga({app,db,trainer,clientFor,fail,str,num,stringList,checkKeys,dateValue}) {
+ db.transaction(() => {migrateYoga(db);db.exec("CREATE INDEX IF NOT EXISTS yoga_assignments_date ON yoga_assignments(json_extract(json, '$.date'));");});
  const key = name => name.trim().toLowerCase().replace(/[\s-]+/g,' ');
  const jsonRows=(sql,...args)=>db.prepare(sql).all(...args).map(r=>JSON.parse(r.json));
  const pose=id=>{const r=db.prepare('SELECT json FROM yoga_poses WHERE id=?').get(id);return r?JSON.parse(r.json):fail(400,'Choose an existing pose.');};
@@ -81,9 +81,9 @@ export function installYoga({app,db,trainer,clientFor,fail,str,num,stringList,ch
  const assigned=req=>jsonRows('SELECT json FROM yoga_assignments').filter(a=>{try{clientFor(req,a.clientId);return true;}catch{return false;}});
  const assignment=(req,id)=>{const row=db.prepare('SELECT json FROM yoga_assignments WHERE id=?').get(id);if(!row)fail(404,'Assignment was not found.');const a=JSON.parse(row.json);clientFor(req,a.clientId);return a;};
  app.post('/api/yoga/flows/:id/assign',(req,res)=>{
-  owned(req,'yoga_flows',req.params.id);checkKeys(req.body,['clientId']);clientFor(req,req.body.clientId);const f=flow(req.params.id);if(f.status!=='Published')fail(400,'Publish this flow before assigning it.');
+  owned(req,'yoga_flows',req.params.id);checkKeys(req.body,['clientId','date']);clientFor(req,req.body.clientId);const f=flow(req.params.id);if(f.status!=='Published')fail(400,'Publish this flow before assigning it.');
   const ids=[...new Set(f.sections.flatMap(s=>s.steps.map(s=>s.poseId).filter(Boolean)))];const poses=ids.map(pose);if(poses.some(p=>!p.active))fail(400,'Replace inactive poses before assigning.');
-  const a={id:`yoga-assignment-${randomUUID()}`,flowId:f.id,clientId:req.body.clientId,assignedBy:req.user.id,createdAt:new Date().toISOString(),flow:f,poses};
+  const a={id:`yoga-assignment-${randomUUID()}`,flowId:f.id,clientId:req.body.clientId,date:req.body.date===undefined?null:dateValue(req.body.date),assignedBy:req.user.id,createdAt:new Date().toISOString(),flow:f,poses};
   db.prepare('INSERT INTO yoga_assignments(id,flow_id,client_id,assigned_by,created_at,json) VALUES (?,?,?,?,?,?)').run(a.id,a.flowId,a.clientId,a.assignedBy,a.createdAt,JSON.stringify(a));res.status(201).json(a);
  });
  app.get('/api/yoga/assignments',(req,res)=>res.json(assigned(req)));

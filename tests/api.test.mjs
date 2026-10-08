@@ -703,3 +703,33 @@ test('weekly lineups enforce coach ownership and client permissions at every end
   assert.equal((await f.bootstrap(admin.cookie)).weeklyLineups.length, 1);
 });
 
+
+test('private password recovery enforces roles, replaces links and revokes sessions', async t => {
+ const f=await fixture(t);
+ const login=async email=>(await f.login(email)).cookie;
+ const coach=await login('coach@form.fit'), client=await login('jamie@form.fit'), admin=await login('admin@form.fit');
+ const create=cookie=>f.request('/auth/recovery-link',{method:'POST',cookie,body:{userId:'user-jamie'}});
+ assert.equal((await create(client)).status,403);
+ assert.equal((await f.request('/auth/recovery-link',{method:'POST',cookie:coach,body:{userId:'user-admin'}})).status,403);
+ const first=await create(coach); assert.equal(first.status,201);
+ const second=await create(admin); assert.equal(second.status,201);
+ assert.equal((await f.request(`/auth/reset-password/${first.body.token}`)).status,400);
+ assert.equal((await f.request(`/auth/reset-password/${second.body.token}`)).status,200);
+ assert.equal((await f.request('/auth/reset-password',{method:'POST',body:{token:second.body.token,password:'tiny'}})).status,400);
+ assert.equal((await f.request('/auth/reset-password',{method:'POST',body:{token:second.body.token,password:'NewRecovery123!'}})).status,200);
+ assert.equal((await f.request('/bootstrap',{cookie:client})).status,401);
+ assert.equal((await f.request('/auth/reset-password',{method:'POST',body:{token:second.body.token,password:'AnotherPassword123!'}})).status,400);
+ assert.equal((await f.request('/auth/login',{method:'POST',body:{email:'jamie@form.fit',password:'NewRecovery123!'}})).status,200);
+ for(let i=0;i<5;i++)assert.equal((await f.request('/auth/forgot-password',{method:'POST',body:{email:'absent@example.com'}})).status,503);
+ assert.equal((await f.request('/auth/forgot-password',{method:'POST',body:{email:'absent@example.com'}})).status,429);
+});
+
+test('recovery links persist across restart and expire after thirty minutes', {skip:process.env.FORM_TEST_RUNTIME==='cloudflare'}, async t => {
+ const f=await fixture(t), coach=(await f.login('coach@form.fit')).cookie;
+ const created=await f.request('/auth/recovery-link',{method:'POST',cookie:coach,body:{userId:'user-jamie'}});
+ assert.equal(created.status,201);assert.match(created.body.token,/^[a-f0-9]{64}$/);
+ await f.restart();assert.equal((await f.request(`/auth/reset-password/${created.body.token}`)).status,200);
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});t.mock.timers.tick(30*60_000+1000);
+ assert.equal((await f.request(`/auth/reset-password/${created.body.token}`)).status,400);
+ assert.equal((await f.request('/auth/reset-password',{method:'POST',body:{token:created.body.token,password:'ExpiredPassword123!'}})).status,400);
+});

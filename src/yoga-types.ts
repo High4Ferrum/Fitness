@@ -3,5 +3,5 @@ export interface YogaStep { id?:string; poseId:string|null; kind:'Pose'|'Breathi
 export interface YogaSection { id?:string; title:string; steps:YogaStep[]; }
 export interface YogaFlow { id?:string; ownerId?:string|null; updatedAt?:string; title:string; theme:string; quote:string; quoteAttribution:string; description:string; style:string; difficulty:string; targetMinutes:number; targetAreas:string; equipment:string[]; openingIntention:string; closingReflection:string; instructorNotes:string; status:'Draft'|'Published'; references:{name:string;url:string;attribution:string}[]; sections:YogaSection[]; }
 export interface YogaBlock {id:string;ownerId:string|null;name:string;description:string;steps:YogaStep[];}
-export interface YogaAssignment {id:string;clientId:string;flowId:string;createdAt:string;flow:YogaFlow;poses:YogaPose[];}
+export interface YogaAssignment {date?:string|null;id:string;clientId:string;flowId:string;createdAt:string;flow:YogaFlow;poses:YogaPose[];}
 export interface YogaCompletion {id:string;assignmentId:string;clientId:string;completedAt:string;}

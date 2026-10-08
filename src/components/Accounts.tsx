@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { ArrowRight, Check, Mail, Pencil, Plus, Search, ShieldCheck, UserRound, Users } from 'lucide-react';
 import { api } from '../api';
 import type { Data, User } from '../types';
+import { RecoveryLinkButton } from './PasswordRecovery';
 import Modal from './Modal';
 import './Accounts.css';
 
@@ -66,7 +67,7 @@ export default function Accounts({ data, refresh, notify }: Props) {
         <div className="account-card-top"><div className={`account-avatar ${user.role}`}>{user.name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase()}</div><span className={`badge ${user.role === 'admin' ? 'accounts-admin-badge' : 'sage'}`}>{user.role === 'admin' ? <ShieldCheck size={12} /> : <UserRound size={12} />}{user.role === 'admin' ? 'Admin' : 'Coach'}</span></div>
         <h2>{user.name}{user.id === data.user.id && <span className="account-you">You</span>}</h2><div className="account-email"><Mail size={13} />{user.email}</div>
         <div className="account-clients"><div className="account-client-heading"><span>Assigned clients</span><strong>{clients.length}</strong></div>{clients.length ? <div className="account-client-preview">{clients.slice(0, 3).map(client => <div key={client.id}><span className="account-mini-avatar" style={{ backgroundColor: client.color }}>{client.name.split(' ').map(part => part[0]).join('').slice(0, 2)}</span><span>{client.name}</span></div>)}{clients.length > 3 && <span className="account-more-clients">+{clients.length - 3} more</span>}</div> : <p className="account-no-clients">Ready for their first client.</p>}</div>
-        <div className="account-card-actions"><button className="text-button" onClick={() => openEditor(user)}><Pencil size={13} /> Edit account</button><button className="button secondary small" onClick={() => openAssignments(user)}><Users size={14} /> Assign clients</button></div>
+        <RecoveryLinkButton userId={user.id}/><div className="account-card-actions"><button className="text-button" onClick={() => openEditor(user)}><Pencil size={13} /> Edit account</button><button className="button secondary small" onClick={() => openAssignments(user)}><Users size={14} /> Assign clients</button></div>
       </article>;
     })}</div>
     {!filteredStaff.length && <div className="empty-state"><Users size={32} /><h3>No team members found</h3><p>Try searching by another name or email.</p></div>}

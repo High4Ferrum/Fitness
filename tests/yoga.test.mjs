@@ -36,7 +36,8 @@ test('yoga permissions, owner boundaries, atomic validation, snapshot assignment
  const published=await request(`/yoga/flows/${copy.id}`,coach,'PATCH',{status:'Published',title:'Yoga test class'});assert.equal(published.status,200);
  assert.equal((await request(`/yoga/flows/${copy.id}`,client)).status,403);
  assert.equal((await request(`/yoga/flows/${copy.id}/assign`,client,'POST',{clientId:'client-jamie'})).status,403);
- const assigned=await request(`/yoga/flows/${copy.id}/assign`,coach,'POST',{clientId:'client-jamie'});assert.equal(assigned.status,201);const a=assigned.body;assert.equal(a.flow.status,'Published');assert.ok(a.poses.length>0);
+ assert.equal((await request(`/yoga/flows/${copy.id}/assign`,coach,'POST',{clientId:'client-jamie',date:'2026-02-30'})).status,400);
+ const assigned=await request(`/yoga/flows/${copy.id}/assign`,coach,'POST',{clientId:'client-jamie',date:'2026-10-08'});assert.equal(assigned.status,201);const a=assigned.body;assert.equal(a.date,'2026-10-08');assert.equal(a.flow.status,'Published');assert.ok(a.poses.length>0);
  assert.equal((await request(`/yoga/assignments/${a.id}`,otherClient)).status,403);assert.equal((await request('/yoga/assignments',otherClient)).body.length,0);
  assert.equal((await request(`/yoga/flows/${copy.id}`,coach,'PATCH',{title:'Edited after assignment',status:'Draft'})).status,200);assert.equal((await request(`/yoga/assignments/${a.id}`,client)).body.flow.title,'Yoga test class');
  assert.equal((await request(`/yoga/assignments/${a.id}/complete`,coach,'POST',{})).status,403);assert.equal((await request(`/yoga/assignments/${a.id}/complete`,client,'POST',{})).status,201);assert.equal((await request(`/yoga/assignments/${a.id}/complete`,client,'POST',{})).status,200);assert.equal((await request(`/yoga/flows/${copy.id}`,coach,'DELETE')).status,409);
