@@ -1,0 +1,57 @@
+# Account recovery and yoga calendar updates
+
+The existing React, shared Node/Worker API, authentication, calendar and yoga entities are extended in place. Existing exercise and yoga records remain intact.
+
+## Password recovery
+
+Login includes **Forgot password?**. Email delivery is intentionally deferred until the owner selects a verified sender/domain. Until then, the screen directs users to their coach or administrator.
+
+Coaches: My clients → **Create password reset link**. Administrators can also create staff recovery links in Manage coaches. Verify the account owner's identity and share the link privately. Users choose their own new password; coaches never need to know it. Links expire after 30 minutes, are single-use and replaced by a newly generated link. Tokens are cryptographically random; only their SHA-256 hashes are stored. Resetting revokes all account sessions. Normal password changes and administrator password resets also invalidate outstanding recovery links.
+
+Public API: POST `/api/auth/forgot-password`, GET `/api/auth/reset-password/:token`, POST `/api/auth/reset-password`. Authenticated POST `/api/auth/recovery-link` enforces administrator access for staff and coach ownership for clients. The email request endpoint is rate limited and does not disclose account existence.
+
+Future email setup: configure a verified Cloudflare Email Sending domain, an `EMAIL` send_email binding, `FORM_EMAIL_FROM` and `FORM_PUBLIC_URL` (the canonical HTTPS website URL). The shared API supports the binding; the Fetch router now awaits async handlers. Do not add credentials to source control. No email messages or domain changes were made during this delivery.
+
+Schema: additive idempotent `server/migrations/password-recovery-v1.mjs` creates password_resets and indexes. No existing tables or records are removed.
+
+## Calendar yoga assignments
+
+Schedule → **Add yoga class** selects an entire published sequence, client and calendar date. Flow Builder → **Assign to Trainee** also has a calendar date. Assignments retain the existing immutable published-flow and pose-guidance snapshot, with an optional validated YYYY-MM-DD date. Existing undated assignments remain available under My yoga. An additive JSON date index is created on yoga_assignments. Calendar views and counts include dated yoga classes; clients can start and complete them from the daily agenda.
+
+API POST `/api/yoga/flows/:id/assign` accepts `{ clientId, date }`. Omitting date retains compatibility with previous assignments. Impossible dates, unauthorized coaches and trainees, drafts and inactive poses are rejected.
+
+## Player
+
+A running countdown advances to the next step automatically after its full duration, including bilateral holds, repetitions, transitions and rests. Playback continues on the next step. Pause/resume and manual previous/next remain available. The final step stops at zero and leaves completion as an explicit user action.
+
+## Changed components
+
+PasswordRecovery (new), App, Registration, Clients, Accounts, Schedule, Yoga, YogaFlowEditor, YogaPlayer; yoga-types; shared API and Yoga API; Cloudflare Fetch router; additive recovery migration. API and browser contracts cover authorization, replacement/single-use tokens, session revocation, calendar assignment and automatic progression/pause/final-stop.
+
+## Verification and production delivery (2026-10-08)
+
+- Production build passed.
+- Node automated suite: 40 passed.
+- Shared Cloudflare API contracts: 36 passed; additional Node test verifies token expiry and restart persistence.
+- Full desktop/mobile browser suite: 13 passed.
+- New calendar, timer and recovery browser contracts also passed against Cloudflare: 2 passed.
+- Source commit: 9089728, pushed to feature/yoga-flow-builder (existing PR #2).
+- Deployed to https://train-with-me.highferrum.workers.dev at 100% traffic.
+- Worker version: c27a03bc-fad7-4926-993f-577a1ddc75bb; deployment: 3d365df7-6ef7-4fcd-9fe7-aa339545dce2.
+- Existing FormDatabase namespace 62cb0723d84d4ca38888f4e070eb82a2, migration tag v1 and setup secret binding preserved. Previous version 0f5c6e7c-5c60-4e14-8d44-476b3bc544d8 remains available for rollback.
+- Email sender/domain setup remains deferred by the owner. Private recovery links are available now.
+- Production authenticated workflows were tested in isolated local and Cloudflare environments; no real user accounts were modified for testing.
+
+## Client profile password access
+
+Clients now have a visible **Reset password** button underneath their profile in the sidebar. On mobile, open the menu to find it; selecting it closes the menu and opens the password dialog. It reuses the existing password-change API and verifies the current password. **Forgot your current password?** explains private coach/admin recovery links. The shared login screen continues to show **Forgot password?** for clients and coaches.
+
+Changed App.tsx and a scoped sidebar button style. No database or API changes. Two Cloudflare browser tests passed, covering mobile layout, incorrect current-password rejection, successful password change and sign-in with the new password, plus private reset-link recovery. The recovery test now restores the client password using the client's authenticated password-change endpoint (staff-account editing does not accept client accounts).
+
+## Visible coach/admin yoga assignment
+
+Every flow card in Yoga → Flow Builder now has **Assign to Client**. The shared YogaAssignmentModal selects a trainee and calendar date and assigns the entire sequence. Published personal flows assign directly. Drafts show an explicit **Publish & assign** confirmation. Shared starter templates are duplicated into a personal copy before publishing, preserving the original starter draft and existing authorization rules.
+
+The editor's **Assign to Trainee** also works for drafts: unsaved edits are saved before opening the picker. Both entry points use the same modal. No new API routes, database changes or permissions were introduced; existing publication validation and coach/client ownership checks remain enforced.
+
+Changed components: Yoga.tsx, YogaFlowEditor.tsx, new YogaAssignmentModal.tsx. Build passed; all eight existing/updated Cloudflare yoga browser contracts passed, including coach and admin card assignment and mobile display. A ninth contract passed separately for edited-draft save/publish/assignment from the editor. Tests verify full sequence snapshots, client calendar visibility and preservation of original starter drafts.

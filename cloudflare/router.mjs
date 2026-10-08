@@ -80,7 +80,7 @@ export class FetchRouter {
       try {
         req.params = match ? Object.fromEntries(layer.names.map((name, i) => [name, decodeURIComponent(match[i + 1])])) : {};
         if (error) layer.handler(error, req, res, next);
-        else layer.handler(req, res, next);
+        else await layer.handler(req, res, next);
       } catch (caught) { error = caught; advanced = true; }
       if (!advanced && !res.headersSent) break;
     }

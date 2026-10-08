@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowUpRight, CalendarCheck, CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin, Pencil, Plus, Trash2, Video } from 'lucide-react';
 import { api } from '../api';
 import type { Client, Data, Session } from '../types';
+import type { YogaAssignment, YogaCompletion, YogaFlow } from '../yoga-types';
+import YogaPlayer from './YogaPlayer';
+import { flowSeconds } from '../../shared/yoga-timing.mjs';
 import Modal from './Modal';
 import './Schedule.css';
 
@@ -22,6 +25,11 @@ export default function Schedule({ data, refresh, notify }: Props) {
   const [week, setWeek] = useState(() => startOfWeek(parseDate(today)));
   const [selectedDate, setSelectedDate] = useState(today);
   const [editor, setEditor] = useState<{ session?: Session; date: string } | null>(null);
+  const [yoga,setYoga]=useState<YogaAssignment[]>([]),[completed,setCompleted]=useState<YogaCompletion[]>([]),[flows,setFlows]=useState<YogaFlow[]>([]),[yogaOpen,setYogaOpen]=useState(false),[flowId,setFlowId]=useState(''),[yogaClient,setYogaClient]=useState(data.clients[0]?.id??''),[yogaDate,setYogaDate]=useState(today),[yogaBusy,setYogaBusy]=useState(false),[yogaError,setYogaError]=useState(''),[player,setPlayer]=useState<YogaAssignment|null>(null);
+  const loadYoga=async()=>{const [a,c]=await Promise.all([api<YogaAssignment[]>('/yoga/assignments'),api<YogaCompletion[]>('/yoga/completions')]);setYoga(a);setCompleted(c);};
+  useEffect(()=>{let active=true;Promise.all([api<YogaAssignment[]>('/yoga/assignments'),api<YogaCompletion[]>('/yoga/completions')]).then(([a,c])=>{if(active){setYoga(a);setCompleted(c);}}).catch(e=>{if(active)notify(e.message);});return()=>{active=false;};},[data.user.id]);
+  async function openYoga(){setYogaError('');try{const available=(await api<YogaFlow[]>('/yoga/flows')).filter(f=>f.status==='Published'&&(f.ownerId===null||f.ownerId===data.user.id||data.user.role==='admin'));setFlows(available);setFlowId(available[0]?.id??'');setYogaDate(selectedDate);setYogaOpen(true);}catch(e){notify((e as Error).message);}}
+  async function assignYoga(e:React.FormEvent){e.preventDefault();setYogaBusy(true);setYogaError('');try{await api(`/yoga/flows/${flowId}/assign`,'POST',{clientId:yogaClient,date:yogaDate});await loadYoga();setYogaOpen(false);notify('Yoga class added to the client calendar.');}catch(e){setYogaError((e as Error).message);}finally{setYogaBusy(false);}}
   const canManage = data.user.role !== 'client';
   const sessions = data.sessions.filter(session => canManage || session.clientId === data.user.clientId).sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
   const days = Array.from({ length: 7 }, (_, index) => addDays(week, index));
@@ -41,9 +49,11 @@ export default function Schedule({ data, refresh, notify }: Props) {
     try { await refresh(); } catch { notify('Your change was saved. Reload the page to update the calendar.'); }
   };
 
+  if(player)return <YogaPlayer flow={player.flow} poses={player.poses} onClose={()=>setPlayer(null)} onComplete={canManage?undefined:async()=>{await api(`/yoga/assignments/${player.id}/complete`,'POST',{});await loadYoga();setPlayer(null);notify('Yoga class completed.');}}/>;
   return <div className="schedule-page">
     <div className="page-heading">
       <div><div className="eyebrow">YOUR TRAINING, IN RHYTHM</div><h1>Schedule</h1><p>{canManage ? 'Plan the week. Keep everyone moving.' : 'Make time for your next step forward.'}</p></div>
+      {canManage && <button className="button secondary" disabled={!data.clients.length} onClick={openYoga}>Add yoga class</button>}
       {canManage && <button className="button primary" disabled={!data.clients.length} onClick={() => setEditor({ date: selectedDate })}><Plus size={17} /> Schedule session</button>}
     </div>
 
@@ -62,19 +72,20 @@ export default function Schedule({ data, refresh, notify }: Props) {
           <div className="schedule-week-grid">
             {days.map(day => {
               const key = dateKey(day);
+              const dayYoga=yoga.filter(a=>a.date===key);
               const daySessions = weekSessions.filter(session => session.date === key);
               return <div key={key} className={`schedule-day ${key === selectedDate ? 'is-selected' : ''} ${key === today ? 'is-today' : ''}`}>
-                <button className="schedule-day-heading" onClick={() => setSelectedDate(key)} aria-pressed={key === selectedDate} aria-label={`View ${day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}, ${daySessions.length} sessions`}>
+                <button className="schedule-day-heading" onClick={() => setSelectedDate(key)} aria-pressed={key === selectedDate} aria-label={`View ${day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}, ${daySessions.length} sessions, ${dayYoga.length} yoga classes`}>
                   <span>{day.toLocaleDateString('en-US', { weekday: 'short' })}</span><strong>{day.getDate()}</strong>
                   <span className="schedule-mobile-dots" aria-hidden="true">{daySessions.slice(0, 3).map(session => <i key={session.id} className={session.type === 'Online' ? 'online' : ''} />)}</span>
                 </button>
-                <div className="schedule-day-events">
+                <div className="schedule-day-events">{dayYoga.map(a=><button key={a.id} className="schedule-mini-session" onClick={()=>setSelectedDate(key)}><span>Yoga</span><strong>{a.flow.title}</strong><small>{Math.round(flowSeconds(a.flow)/60)} min</small></button>)}
                   {daySessions.slice(0, 3).map(session => <button key={session.id} className={`schedule-mini-session ${session.type === 'Online' ? 'online' : ''}`} onClick={() => { setSelectedDate(key); if (canManage) setEditor({ session, date: key }); }} title={`${clientFor(session.clientId)?.name || 'Training'} · ${displayTime(session.time)} · ${session.type}`}>
                     <span>{displayTime(session.time)}</span><strong>{canManage ? clientFor(session.clientId)?.name.split(' ')[0] || 'Client' : session.type}</strong>
                     <small>{session.type === 'Online' ? <Video size={11} /> : <MapPin size={11} />}{session.duration} min</small>
                   </button>)}
                   {daySessions.length > 3 && <button className="schedule-more" onClick={() => setSelectedDate(key)}>+{daySessions.length - 3} more</button>}
-                  {!daySessions.length && <span className="schedule-day-clear" aria-hidden="true">—</span>}
+                  {!daySessions.length && !dayYoga.length && <span className="schedule-day-clear" aria-hidden="true">—</span>}
                 </div>
               </div>;
             })}
@@ -83,7 +94,8 @@ export default function Schedule({ data, refresh, notify }: Props) {
         </section>
 
         <section className="panel schedule-agenda" aria-label="Selected day's appointments">
-          <div className="schedule-section-heading"><div><span className="eyebrow">DAILY AGENDA</span><h2>{parseDate(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h2></div><span className="badge">{agenda.length} {agenda.length === 1 ? 'session' : 'sessions'}</span></div>
+          <div className="schedule-section-heading"><div><span className="eyebrow">DAILY AGENDA</span><h2>{parseDate(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h2></div><span className="badge">{agenda.length+yoga.filter(a=>a.date===selectedDate).length} activities</span></div>
+          {yoga.filter(a=>a.date===selectedDate).map(a=><article className="schedule-agenda-item" key={a.id}><div className="schedule-session-details"><h3>{a.flow.title}</h3><p>{canManage?clientFor(a.clientId)?.name+' · ':''}{Math.round(flowSeconds(a.flow)/60)} min · {a.flow.style} · {completed.some(c=>c.assignmentId===a.id)?'Completed':'Assigned'}</p></div><button className="button secondary" onClick={()=>setPlayer(a)}>{canManage?'Preview yoga':'Start yoga class'}</button></article>)}
           {agenda.length ? <div className="schedule-agenda-list">{agenda.map(session => {
             const client = clientFor(session.clientId);
             const joinUrl = session.type === 'Online' ? safeMeetingUrl(session.location) : '';
@@ -93,12 +105,12 @@ export default function Schedule({ data, refresh, notify }: Props) {
               <div className="schedule-session-details"><h3>{canManage ? client?.name || 'Client session' : `${session.type} training`}</h3><div className="schedule-session-meta"><span>{session.type}</span><span>·</span><span>{session.duration} min</span>{session.location && !joinUrl && <><span>·</span><span>{session.location}</span></>}</div>{session.notes && <p>{session.notes}</p>}</div>
               <div className="schedule-session-actions">{joinUrl && <a className="button secondary schedule-join" href={joinUrl} target="_blank" rel="noopener noreferrer">Join <ArrowUpRight size={15} /></a>}{canManage && <button className="schedule-icon-button" aria-label={`Edit ${client?.name || 'client'} session at ${displayTime(session.time)}`} onClick={() => setEditor({ session, date: selectedDate })}><Pencil size={16} /></button>}</div>
             </article>;
-          })}</div> : <div className="schedule-empty"><div className="schedule-empty-icon"><CalendarDays size={25} /></div><h3>A little breathing room</h3><p>{canManage ? 'No sessions planned for this day. Make space for your next training session.' : 'No training sessions scheduled for this day.'}</p>{canManage && data.clients.length > 0 && <button className="button secondary" onClick={() => setEditor({ date: selectedDate })}><Plus size={15} /> Add a session</button>}{canManage && !data.clients.length && <p>Add a client to start scheduling sessions.</p>}</div>}
+          })}</div> : yoga.some(a=>a.date===selectedDate)?null:<div className="schedule-empty"><div className="schedule-empty-icon"><CalendarDays size={25} /></div><h3>A little breathing room</h3><p>{canManage ? 'No sessions planned for this day. Make space for your next training session.' : 'No training sessions scheduled for this day.'}</p>{canManage && data.clients.length > 0 && <button className="button secondary" onClick={() => setEditor({ date: selectedDate })}><Plus size={15} /> Add a session</button>}{canManage && !data.clients.length && <p>Add a client to start scheduling sessions.</p>}</div>}
         </section>
       </div>
 
       <aside className="schedule-sidebar">
-        <section className="panel schedule-week-summary"><div className="schedule-summary-icon"><CalendarCheck size={21} /></div><span className="eyebrow">{isCurrentWeek ? 'THIS WEEK' : 'SELECTED WEEK'}</span><div className="schedule-summary-number">{weekSessions.length}<span>scheduled {weekSessions.length === 1 ? 'session' : 'sessions'}</span></div><div className="schedule-summary-breakdown"><span><MapPin size={14} />{weekSessions.filter(session => session.type === 'In person').length} in person</span><span><Video size={14} />{weekSessions.filter(session => session.type === 'Online').length} online</span></div></section>
+        <section className="panel schedule-week-summary"><div className="schedule-summary-icon"><CalendarCheck size={21} /></div><span className="eyebrow">{isCurrentWeek ? 'THIS WEEK' : 'SELECTED WEEK'}</span><div className="schedule-summary-number">{weekSessions.length+yoga.filter(a=>a.date&&a.date>=weekStart&&a.date<=weekEnd).length}<span>scheduled activities</span></div><div className="schedule-summary-breakdown"><span><MapPin size={14} />{weekSessions.filter(session => session.type === 'In person').length} in person</span><span>{yoga.filter(a=>a.date&&a.date>=weekStart&&a.date<=weekEnd).length} yoga classes</span><span><Video size={14} />{weekSessions.filter(session => session.type === 'Online').length} online</span></div></section>
         <section className="panel schedule-upcoming"><div className="schedule-section-heading"><h2>Coming up</h2><Clock3 size={17} /></div>{upcoming.length ? <div className="schedule-upcoming-list">{upcoming.map(session => {
           const client = clientFor(session.clientId);
           return <button className="schedule-upcoming-item" key={session.id} onClick={() => { setWeek(startOfWeek(parseDate(session.date))); setSelectedDate(session.date); }}>
@@ -109,6 +121,7 @@ export default function Schedule({ data, refresh, notify }: Props) {
       </aside>
     </div>
 
+    {yogaOpen&&<Modal title="Add yoga class to calendar" onClose={()=>!yogaBusy&&setYogaOpen(false)}><form onSubmit={assignYoga}><label className="field">Yoga sequence<select required value={flowId} onChange={e=>setFlowId(e.target.value)}><option value="" disabled>Choose a published flow</option>{flows.map(f=><option key={f.id} value={f.id}>{f.title} · {Math.round(flowSeconds(f)/60)} min</option>)}</select></label>{!flows.length&&<p>Publish a flow in Yoga → Flow Builder first.</p>}<label className="field">Client<select required value={yogaClient} onChange={e=>setYogaClient(e.target.value)}>{data.clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="field">Calendar date<input type="date" required value={yogaDate} onChange={e=>setYogaDate(e.target.value)}/></label><p>The entire published sequence and its instructions will be assigned.</p>{yogaError&&<p role="alert">{yogaError}</p>}<button className="button primary" disabled={yogaBusy||!flowId}>{yogaBusy?'Saving…':'Add to calendar'}</button></form></Modal>}
     {editor && <SessionEditor clients={data.clients} session={editor.session} date={editor.date} onClose={() => setEditor(null)} onSaved={saved} />}
   </div>;
 }

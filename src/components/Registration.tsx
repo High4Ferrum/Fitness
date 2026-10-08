@@ -4,11 +4,11 @@ import { api } from '../api';
 import Brand from './Brand';
 
 interface Invitation { name: string; email: string; goal: string; coachName: string; expiresAt: number; demoMode: boolean }
-export interface RegistrationLink { kind: 'register' | 'setup'; token: string }
+export interface RegistrationLink { kind: 'register' | 'setup' | 'reset'; token: string }
 
 export function registrationLink(): RegistrationLink | null {
   const hash = new URLSearchParams(window.location.hash.slice(1));
-  for (const kind of ['register', 'setup'] as const) if (hash.has(kind)) return { kind, token: hash.get(kind) || '' };
+  for (const kind of ['register', 'setup', 'reset'] as const) if (hash.has(kind)) return { kind, token: hash.get(kind) || '' };
   return null;
 }
 

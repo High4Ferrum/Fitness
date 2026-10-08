@@ -1,3 +1,5 @@
+import { migratePasswordRecovery } from './migrations/password-recovery-v1.mjs';
+import { installYoga } from './yoga-api.mjs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { seedDatabase, seedExerciseLibrary, passwordHash } from './seed.mjs';
 
@@ -168,6 +170,59 @@ export function createApi({ app, db, seed = true, config = {} }) {
     });
     res.status(201).json(signedIn);
   });
+
+  db.transaction(() => migratePasswordRecovery(db));
+  const resetLink = account => {
+    const token = randomBytes(32).toString('hex'), expiresAt = Date.now() + 30 * 60_000;
+    db.transaction(() => {
+      db.prepare('DELETE FROM password_resets WHERE user_id=? OR expires_at<=?').run(account.id, Date.now());
+      db.prepare('INSERT INTO password_resets(token_hash,user_id,expires_at) VALUES (?,?,?)').run(sha(token), account.id, expiresAt);
+    });
+    return { token, expiresAt };
+  };
+  const validReset = token => {
+    if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) fail(400, 'This password reset link is invalid or expired. Request a new link.');
+    const reset = db.prepare('SELECT * FROM password_resets WHERE token_hash=? AND expires_at>?').get(sha(token), Date.now());
+    if (!reset) fail(400, 'This password reset link is invalid or expired. Request a new link.');
+    return reset;
+  };
+  const resetAttempts = new Map();
+  app.post('/api/auth/forgot-password', async (req, res, next) => {
+    try {
+      checkKeys(req.body, ['email']);
+      const email = emailValue(req.body.email), now = Date.now(), key = req.ip;
+      const previous = resetAttempts.get(key);
+      if (previous && now - previous.started < 900_000 && previous.count >= 5) fail(429, 'Too many requests. Try again in 15 minutes.');
+      for (const [id, value] of resetAttempts) if (now - value.started >= 900_000) resetAttempts.delete(id);
+      resetAttempts.set(key, previous && now - previous.started < 900_000 ? { ...previous, count: previous.count + 1 } : { started: now, count: 1 });
+      if (!config.EMAIL?.send || !config.FORM_EMAIL_FROM || !config.FORM_PUBLIC_URL) return res.status(503).json({ error: 'Email recovery is not available yet. Ask your coach or administrator for a secure password reset link.' });
+      const account = db.prepare('SELECT * FROM users WHERE email=?').get(email);
+      if (account) {
+        const reset = resetLink(account);
+        const url = new URL(config.FORM_PUBLIC_URL); url.hash = `reset=${reset.token}`;
+        try {
+          await config.EMAIL.send({ from: { email: config.FORM_EMAIL_FROM, name: 'Train With Me' }, to: email, subject: 'Reset your Train With Me password', text: `Reset your password using this link: ${url.href}\nThis link expires in 30 minutes and works once. If you did not request it, ignore this email.`, html: `<p>Reset your Train With Me password:</p><p><a href="${url.href}">Choose a new password</a></p><p>This link expires in 30 minutes and works once. If you did not request it, ignore this email.</p>` });
+        } catch {
+          db.prepare('DELETE FROM password_resets WHERE token_hash=?').run(sha(reset.token));
+          // Keep the response identical for existing and unknown accounts.
+        }
+      }
+      res.json({ ok: true, message: 'If an account matches that email, you will receive a reset link.' });
+    } catch (error) { next(error); }
+  });
+  app.get('/api/auth/reset-password/:token', (req, res) => { validReset(req.params.token); res.json({ available: true }); });
+  app.post('/api/auth/reset-password', (req, res) => {
+    checkKeys(req.body, ['token', 'password']);
+    validReset(req.body.token);
+    const hashed = passwordHash(passwordValue(req.body.password));
+    db.transaction(() => {
+      const reset = validReset(req.body.token);
+      db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(hashed, reset.user_id);
+      db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(reset.user_id);
+      db.prepare('DELETE FROM password_resets WHERE user_id=?').run(reset.user_id);
+    });
+    res.set('Set-Cookie', sessionCookie(req, '', 0)); res.json({ ok: true });
+  });
   app.post('/api/auth/login', (req, res) => {
     const email = emailValue(req.body.email);
     const password = passwordValue(req.body.password, 'Password', 1);
@@ -216,6 +271,16 @@ export function createApi({ app, db, seed = true, config = {} }) {
     const unknown = Object.keys(body).find(key => !allowed.includes(key));
     if (unknown) fail(400, `Unexpected field: ${unknown}.`);
   };
+  app.post('/api/auth/recovery-link', (req, res) => {
+    trainer(req); checkKeys(req.body, ['userId']);
+    const account = db.prepare('SELECT * FROM users WHERE id=?').get(req.body.userId);
+    if (!account) fail(404, 'Account was not found.');
+    if (req.user.role !== 'admin') {
+      if (account.role !== 'client') fail(403, 'Only an administrator can recover staff accounts.');
+      clientFor(req, account.client_id);
+    }
+    res.status(201).json(resetLink(account));
+  });
   app.get('/api/auth/me', (req, res) => res.json({ user: req.user }));
   app.post('/api/auth/password', (req, res) => {
     checkKeys(req.body, ['currentPassword', 'newPassword']);
@@ -227,7 +292,7 @@ export function createApi({ app, db, seed = true, config = {} }) {
     db.transaction(() => {
       db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(hashed, req.user.id);
       db.prepare('DELETE FROM auth_sessions WHERE user_id=? AND token_hash<>?').run(req.user.id, sha(cookie(req)));
-      
+      db.prepare('DELETE FROM password_resets WHERE user_id=?').run(req.user.id);
     });
     res.json({ ok: true });
   });
@@ -253,8 +318,7 @@ export function createApi({ app, db, seed = true, config = {} }) {
     const hashed = own(req.body, 'password') ? passwordHash(passwordValue(req.body.password, 'New password')) : account.password_hash;
     db.transaction(() => {
       db.prepare('UPDATE users SET name=?,email=?,password_hash=? WHERE id=?').run(name, email, hashed, account.id);
-      if (own(req.body, 'password')) db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(account.id);
-      
+      if (own(req.body, 'password')) { db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(account.id); db.prepare('DELETE FROM password_resets WHERE user_id=?').run(account.id); }
     });
     res.json({ id: account.id, name, email, role: account.role });
   });
@@ -267,7 +331,7 @@ export function createApi({ app, db, seed = true, config = {} }) {
     const invitations = req.user.role === 'client' ? [] : db.prepare('SELECT id,name,email,goal,coach_id,expires_at,used_at,revoked_at FROM client_invitations').all().filter(invite => req.user.role === 'admin' || invite.coach_id === req.user.id).map(invite => ({ id: invite.id, name: invite.name, email: invite.email, coachId: invite.coach_id, expiresAt: invite.expires_at, status: invite.used_at ? 'Joined' : invite.revoked_at ? 'Revoked' : invite.expires_at <= Date.now() ? 'Expired' : 'Pending' }));
     const templates = req.user.role === 'client' ? [] : all('workout_templates').filter(template => req.user.role === 'admin' || template.ownerId === req.user.id);
     const weeklyLineups = req.user.role === 'client' ? [] : all('weekly_lineups').filter(lineup => req.user.role === 'admin' || lineup.ownerId === req.user.id);
-    res.json({ demoMode: seed, user: req.user, users, invitations, templates, weeklyLineups, weeklyAssignments: filtered('weekly_assignments'), exercises: all('exercises'), clients, plans: filtered('plans'), sessions: filtered('training_sessions'), logs: filtered('logs'), measurements: filtered('measurements'), assessments: filtered('assessments') });
+    res.json({ demoMode: seed, user: req.user, users, invitations, templates, weeklyLineups, weeklyAssignments: filtered('weekly_assignments'), exercises: all('exercises').filter(exercise => req.user.role !== 'client' || filtered('plans').some(plan => plan.items.some(item => item.exerciseId === exercise.id))), clients, plans: filtered('plans'), sessions: filtered('training_sessions'), logs: filtered('logs'), measurements: filtered('measurements'), assessments: filtered('assessments') });
   });
 
   app.post('/api/invitations', (req, res) => {
@@ -584,6 +648,9 @@ export function createApi({ app, db, seed = true, config = {} }) {
     } else if (assessment.unit === '%') num(assessment.result, 'Percentage', 0, 100);
     res.status(201).json(save('assessments', assessment));
   });
+  installYoga({ app, db, trainer, clientFor, fail, str, num, stringList, checkKeys, dateValue });
+  app.get('/api/exercises', (req, res) => { trainer(req); res.json(all('exercises')); });
+  app.get('/api/exercises/:id', (req, res) => { const exercise = requiredEntity('exercises', req.params.id); if (req.user.role === 'client' && !all('plans').some(plan => plan.clientId === req.user.clientId && plan.items.some(item => item.exerciseId === exercise.id))) fail(403, 'This exercise is not in your assigned workouts.'); res.json(exercise); });
   app.use('/api', (req, res) => res.status(404).json({ error: 'API route was not found.' }));
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);

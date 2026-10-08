@@ -1,0 +1,17 @@
+import { useEffect, useState, type FormEvent } from 'react';
+import { api } from '../api';
+import Brand from './Brand';
+import Modal from './Modal';
+
+export default function PasswordRecovery({token,onBack}:{token?:string;onBack:()=>void}) {
+ const [busy,setBusy]=useState(false),[ready,setReady]=useState(!token),[error,setError]=useState(''),[message,setMessage]=useState(''),[done,setDone]=useState(false);
+ useEffect(()=>{if(!token)return;let active=true;api(`/auth/reset-password/${encodeURIComponent(token)}`).then(()=>{if(active)setReady(true);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[token]);
+ async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();const values=new FormData(event.currentTarget);setError('');if(token&&values.get('password')!==values.get('confirm')){setError('Your passwords don’t match.');return;}setBusy(true);try{if(token){await api('/auth/reset-password','POST',{token,password:values.get('password')});setDone(true);setMessage('Password updated. Sign in with your new password.');}else{const result=await api<{message:string}>('/auth/forgot-password','POST',{email:values.get('email')});setMessage(result.message);}}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ return <div className="loading-screen"><div className="login-form-card" style={{width:'min(440px, 100%)',padding:24}}><Brand/><h2>{token?'Reset your password':'Forgot password?'}</h2><p>{token?'Choose a new password for your account.':'Enter your account email to request a secure reset link. If email recovery is unavailable, ask your coach or administrator to create a private reset link for you.'}</p>{ready&&!done&&<form onSubmit={submit}>{token?<><label className="field">New password<input name="password" type="password" minLength={8} maxLength={256} autoComplete="new-password" required/></label><label className="field">Confirm new password<input name="confirm" type="password" minLength={8} maxLength={256} autoComplete="new-password" required/></label></>:<label className="field">Email address<input name="email" type="email" autoComplete="email" required/></label>}<button className="button primary" disabled={busy}>{busy?'Please wait…':token?'Reset password':'Send reset link'}</button></form>}{message&&<p role="status">{message}</p>}{error&&<p className="form-error" role="alert">{error}</p>}<button className="text-button" onClick={onBack}>Back to sign in</button></div></div>;
+}
+
+export function RecoveryLinkButton({userId}:{userId:string}) {
+ const [link,setLink]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ async function create(){setBusy(true);setError('');try{const result=await api<{token:string}>('/auth/recovery-link','POST',{userId});const url=new URL(window.location.href);url.hash=`reset=${result.token}`;setLink(url.href);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ return <><button type="button" className="text-button" disabled={busy} onClick={create}>{busy?'Creating…':'Create password reset link'}</button>{error&&<p role="alert">{error}</p>}{link&&<Modal title="Password reset link" onClose={()=>setLink('')}><p>Share this privately with the account owner after verifying their identity. It expires in 30 minutes and works once. Creating another link invalidates this one.</p><label className="field">Secure reset link<input readOnly value={link} onFocus={e=>e.target.select()}/></label><button className="button secondary" onClick={()=>setLink('')}>Done</button></Modal>}</>;
+}
