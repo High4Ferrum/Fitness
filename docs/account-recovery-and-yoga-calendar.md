@@ -47,3 +47,11 @@ PasswordRecovery (new), App, Registration, Clients, Accounts, Schedule, Yoga, Yo
 Clients now have a visible **Reset password** button underneath their profile in the sidebar. On mobile, open the menu to find it; selecting it closes the menu and opens the password dialog. It reuses the existing password-change API and verifies the current password. **Forgot your current password?** explains private coach/admin recovery links. The shared login screen continues to show **Forgot password?** for clients and coaches.
 
 Changed App.tsx and a scoped sidebar button style. No database or API changes. Two Cloudflare browser tests passed, covering mobile layout, incorrect current-password rejection, successful password change and sign-in with the new password, plus private reset-link recovery. The recovery test now restores the client password using the client's authenticated password-change endpoint (staff-account editing does not accept client accounts).
+
+## Visible coach/admin yoga assignment
+
+Every flow card in Yoga → Flow Builder now has **Assign to Client**. The shared YogaAssignmentModal selects a trainee and calendar date and assigns the entire sequence. Published personal flows assign directly. Drafts show an explicit **Publish & assign** confirmation. Shared starter templates are duplicated into a personal copy before publishing, preserving the original starter draft and existing authorization rules.
+
+The editor's **Assign to Trainee** also works for drafts: unsaved edits are saved before opening the picker. Both entry points use the same modal. No new API routes, database changes or permissions were introduced; existing publication validation and coach/client ownership checks remain enforced.
+
+Changed components: Yoga.tsx, YogaFlowEditor.tsx, new YogaAssignmentModal.tsx. Build passed; all eight existing/updated Cloudflare yoga browser contracts passed, including coach and admin card assignment and mobile display. A ninth contract passed separately for edited-draft save/publish/assignment from the editor. Tests verify full sequence snapshots, client calendar visibility and preservation of original starter drafts.
