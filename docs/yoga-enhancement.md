@@ -92,4 +92,4 @@ Coach review: verify suitability and transition pacing, edit drafts, optionally 
 
 Two existing browser tests initially timed out while multiple runtime/browser suites ran concurrently; both passed independently, and the final full Cloudflare browser run passed with suites run serially. Local test servers in this managed sandbox require the network capability; otherwise Node's runtime asserts while opening test sockets. Neither issue required changing application authentication or workout behavior.
 
-Changes are prepared on local branch `feature/yoga-flow-builder`. No production deployment or live-database mutation was performed. Review and deploy using the repository's existing process, then review starter drafts and add licensed media as desired.
+Changes are committed on repository branch `feature/yoga-flow-builder`. No production deployment or live-database mutation was performed. Review and deploy using the repository's existing process, then review starter drafts and add licensed media as desired.
