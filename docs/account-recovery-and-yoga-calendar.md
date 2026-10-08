@@ -27,3 +27,17 @@ A running countdown advances to the next step automatically after its full durat
 ## Changed components
 
 PasswordRecovery (new), App, Registration, Clients, Accounts, Schedule, Yoga, YogaFlowEditor, YogaPlayer; yoga-types; shared API and Yoga API; Cloudflare Fetch router; additive recovery migration. API and browser contracts cover authorization, replacement/single-use tokens, session revocation, calendar assignment and automatic progression/pause/final-stop.
+
+## Verification and production delivery (2026-10-08)
+
+- Production build passed.
+- Node automated suite: 40 passed.
+- Shared Cloudflare API contracts: 36 passed; additional Node test verifies token expiry and restart persistence.
+- Full desktop/mobile browser suite: 13 passed.
+- New calendar, timer and recovery browser contracts also passed against Cloudflare: 2 passed.
+- Source commit: 9089728, pushed to feature/yoga-flow-builder (existing PR #2).
+- Deployed to https://train-with-me.highferrum.workers.dev at 100% traffic.
+- Worker version: c27a03bc-fad7-4926-993f-577a1ddc75bb; deployment: 3d365df7-6ef7-4fcd-9fe7-aa339545dce2.
+- Existing FormDatabase namespace 62cb0723d84d4ca38888f4e070eb82a2, migration tag v1 and setup secret binding preserved. Previous version 0f5c6e7c-5c60-4e14-8d44-476b3bc544d8 remains available for rollback.
+- Email sender/domain setup remains deferred by the owner. Private recovery links are available now.
+- Production authenticated workflows were tested in isolated local and Cloudflare environments; no real user accounts were modified for testing.
