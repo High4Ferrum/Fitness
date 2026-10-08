@@ -41,3 +41,9 @@ PasswordRecovery (new), App, Registration, Clients, Accounts, Schedule, Yoga, Yo
 - Existing FormDatabase namespace 62cb0723d84d4ca38888f4e070eb82a2, migration tag v1 and setup secret binding preserved. Previous version 0f5c6e7c-5c60-4e14-8d44-476b3bc544d8 remains available for rollback.
 - Email sender/domain setup remains deferred by the owner. Private recovery links are available now.
 - Production authenticated workflows were tested in isolated local and Cloudflare environments; no real user accounts were modified for testing.
+
+## Client profile password access
+
+Clients now have a visible **Reset password** button underneath their profile in the sidebar. On mobile, open the menu to find it; selecting it closes the menu and opens the password dialog. It reuses the existing password-change API and verifies the current password. **Forgot your current password?** explains private coach/admin recovery links. The shared login screen continues to show **Forgot password?** for clients and coaches.
+
+Changed App.tsx and a scoped sidebar button style. No database or API changes. Two Cloudflare browser tests passed, covering mobile layout, incorrect current-password rejection, successful password change and sign-in with the new password, plus private reset-link recovery. The recovery test now restores the client password using the client's authenticated password-change endpoint (staff-account editing does not accept client accounts).

@@ -18,3 +18,5 @@
 @media(max-height:850px){.sidebar-quote{display:none}.sidebar-bottom{padding-top:16px}.sidebar{padding-top:22px}.workspace-badge{margin-bottom:22px}}
 @media(max-width:760px){.topbar{padding:0 16px}.topbar-right{gap:5px}.sign-out-button{min-height:38px;padding:8px;font-size:11px}.sign-out-button svg{width:15px}.client-heading-actions{gap:7px}.client-heading-actions .button{padding:9px 11px}.client-heading-actions{margin-top:8px}.clients-page-heading{flex-wrap:wrap}.registration-card{padding:26px}.registration-layout{padding:20px 14px}.registration-card>h1{font-size:25px}}
 @media(max-width:460px){.breadcrumb>span,.breadcrumb>svg{display:none}.breadcrumb strong{max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.client-heading-actions{width:100%}.client-invitations{padding:17px}.invitation-row{gap:10px}.workspace-footer>span{max-width:160px}.login-form-card>h2{font-size:25px}}
+
+.account-reset-button{width:100%;margin-top:12px;min-height:44px}
