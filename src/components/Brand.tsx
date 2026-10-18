@@ -1,5 +1,5 @@
-import { Activity } from 'lucide-react';
+const logoUrl = new URL('../assets/train-with-me-logo.png', import.meta.url).href;
 
 export default function Brand({ small = false }: { small?: boolean }) {
-  return <div className={`brand ${small ? 'brand-small' : ''}`}><span className="brand-symbol"><Activity size={small ? 16 : 24} strokeWidth={2.4} /></span><span className="brand-name">Train with me</span></div>;
+  return <div className={`brand ${small ? 'brand-small' : ''}`}><img className="brand-logo" src={logoUrl} alt="Train with me" width="1254" height="1254" /></div>;
 }
